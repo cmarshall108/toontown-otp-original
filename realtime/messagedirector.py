@@ -11,7 +11,7 @@ from direct.directnotify.DirectNotifyGlobal import directNotify
 class Participant(io.NetworkHandler):
     notify = directNotify.newCategory('Participant')
 
-    def handle_datagram(self, di, datagram):
+    def handle_datagram(self, di):
         try:
             code = di.get_uint8()
         except:
@@ -90,6 +90,7 @@ class MessageDirector(io.NetworkListener):
             return
 
         datagram = NetDatagram()
+        datagram.add_uint64(channel)
         datagram.add_uint64(sender)
         datagram.add_uint16(di.get_uint16())
         datagram.append_data(di.get_remaining_bytes())

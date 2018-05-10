@@ -32,7 +32,7 @@ class Client(io.NetworkHandler):
         self.handle_send_datagram(datagram)
         self.handle_disconnect()
 
-    def handle_datagram(self, di, datagram):
+    def handle_datagram(self, di):
         try:
             message_type = di.get_uint16()
         except:
@@ -66,14 +66,13 @@ class Client(io.NetworkHandler):
         datagram = NetDatagram()
         datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
         datagram.add_uint8(0)
-        datagram.add_string('')
+        datagram.add_string('All Ok')
         datagram.add_string(play_token)
-        datagram.add_uint8(0)
+        datagram.add_uint8(1)
         datagram.add_uint32(int(time.time()))
         datagram.add_uint32(int(time.clock()))
         datagram.add_uint8(1)
-        datagram.add_int32(0)
-
+        datagram.add_int32(1000 * 60 * 60)
         self.handle_send_datagram(datagram)
 
     def handle_get_shard_list(self):
@@ -111,8 +110,8 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
         io.NetworkListener.setup(self)
         io.NetworkConnector.setup(self)
 
-    def handle_datagram(self, sender, message_type, di):
-        handler = self.get_handler_from_channel(di.get_uint64())
+    def handle_datagram(self, channel, sender, message_type, di):
+        handler = self.get_handler_from_channel(channel)
 
         if not handler:
             return

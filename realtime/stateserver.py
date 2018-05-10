@@ -46,7 +46,7 @@ class StateServer(io.NetworkConnector):
 
         self.shard_manager = ShardManager()
 
-    def handle_datagram(self, sender, message_type, di):
+    def handle_datagram(self, channel, sender, message_type, di):
         if message_type == types.STATESERVER_ADD_SHARD:
             self.handle_add_shard(sender, di)
         elif message_type == types.STATESERVER_REMOVE_SHARD:
@@ -66,7 +66,6 @@ class StateServer(io.NetworkConnector):
         datagram.add_uint64(sender)
         datagram.add_uint64(self.channel)
         datagram.add_uint16(types.STATESERVER_GET_SHARD_ALL_RESP)
-        datagram.add_uint64(sender)
         datagram.add_uint16(len(self.shard_manager.shards))
 
         for shard in self.shard_manager.get_shards():

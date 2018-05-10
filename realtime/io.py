@@ -203,13 +203,8 @@ class NetworkConnector(NetworkManager):
 
         di = DatagramIterator(datagram)
 
-        try:
-            sender = di.get_uint64()
-            message_type = di.get_uint16()
-        except:
-            return
-
-        self.handle_datagram(sender, message_type, di)
+        self.handle_datagram(di.get_uint64(), di.get_uint64(),
+            di.get_uint16(), di)
 
     def handle_send_connection_datagram(self, datagram):
         """
@@ -221,7 +216,7 @@ class NetworkConnector(NetworkManager):
 
         self.__writer.send(datagram, self.__socket)
 
-    def handle_datagram(self, sender, message_type, di):
+    def handle_datagram(self, channel, sender, message_type, di):
         """
         Handles a datagram that was pulled from the queue
         """
@@ -309,7 +304,7 @@ class NetworkHandler(NetworkManager):
         if not di.get_remaining_size():
             return task.cont
 
-        self.handle_datagram(di, datagram)
+        self.handle_datagram(di)
         return task.cont
 
     def is_queued(self, datagram):
@@ -346,7 +341,7 @@ class NetworkHandler(NetworkManager):
 
         self.network.handle_send_datagram(datagram, self.connection)
 
-    def handle_datagram(self, di, datagram):
+    def handle_datagram(self, di):
         """
         Handles a datagram that was pulled from the queue
         """

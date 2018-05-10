@@ -122,5 +122,5 @@ class DatabaseServer(io.NetworkConnector):
 
         self.backend.setup()
 
-    def handle_datagram(self, sender, message_type, di):
+    def handle_datagram(self, channel, sender, message_type, di):
         pass
