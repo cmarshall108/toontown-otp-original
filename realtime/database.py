@@ -31,7 +31,7 @@ class JsonFile(object):
         self.__save()
 
     def __save(self):
-        self.io.write(str(json.dumps(self.__data)))
+        self.io.write(str(json.dumps(self.__data, indent=2)))
         self.__load()
 
     def __load(self):
@@ -45,13 +45,25 @@ class JsonFileManager(object):
 
     def __init__(self, backend):
         self.backend = backend
+
         self.__files = []
 
-    def open(self, filepath):
-        file = JsonFile(filepath, 'w+' if not os.path.exists(filepath) else 'r+')
-        file.setup()
+    def add_file(self, file):
+        if file in self.__files:
+            return
 
         self.__files.append(file)
+
+    def remove_file(self, file):
+        if file not in self.__files:
+            return
+
+        self.__files.remove(file)
+
+    def setup(self, filepath):
+        file = JsonFile(filepath, 'w+' if not os.path.exists(filepath) else 'r+')
+        file.setup()
+        self.add_file(file)
         return file
 
 class DatabaseBackend(object):
@@ -67,7 +79,8 @@ class JsonDatabase(DatabaseBackend):
     notify = directNotify.newCategory('JsonDatabase')
 
     def __init__(self):
-        DatabaseBackend.__init__(self)
+        DatabaseBackend.__init__(self, config.GetInt('database-min-channels', 100000000),
+            config.GetInt('database-max-channels', 399999999))
 
         self.directory = config.GetString('database-directory', 'databases/json')
         self.extension = config.GetString('database-extension', '.json')
@@ -82,7 +95,7 @@ class JsonDatabase(DatabaseBackend):
 
     def setup(self):
         if not os.path.exists(self.directory):
-            self.notify.error('Failed to find database directory: %s!' % self.directory)
+            os.makedirs(self.directory)
 
         if not os.path.exists(self.get_filename(self.tracker_filename)):
             self.create_tracker()
@@ -90,11 +103,11 @@ class JsonDatabase(DatabaseBackend):
             self.read_tracker()
 
     def create_tracker(self):
-        self.tracker = self.file_manager.open(self.get_filename(self.tracker_filename))
-        self.tracker['doId'] = self._min_id
+        self.tracker = self.file_manager.setup(self.get_filename(self.tracker_filename))
+        self.tracker['next'] = self._min_id
 
     def read_tracker(self):
-        self.tracker = self.file_manager.open(self.get_filename(self.tracker_filename))
+        self.tracker = self.file_manager.setup(self.get_filename(self.tracker_filename))
 
 class DatabaseServer(io.NetworkConnector):
     notify = directNotify.newCategory('DatabaseServer')
