@@ -100,9 +100,9 @@ class Client(io.NetworkHandler):
 class ClientAgent(io.NetworkListener, io.NetworkConnector):
     notify = directNotify.newCategory('ClientAgent')
 
-    def __init__(self, address, port, connect_address, connect_port, channel):
+    def __init__(self, dc_loader, address, port, connect_address, connect_port, channel):
         io.NetworkListener.__init__(self, address, port, Client)
-        io.NetworkConnector.__init__(self, connect_address, connect_port, channel)
+        io.NetworkConnector.__init__(self, dc_loader, connect_address, connect_port, channel)
 
         self.channel_allocator = UniqueIdAllocator(config.GetInt('clientagent-min-channels', 1000000000),
             config.GetInt('clientagent-max-channels', 1009999999))

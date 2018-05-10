@@ -18,23 +18,27 @@ from direct.task.TaskManagerGlobal import taskMgr
 __builtin__.config = get_config_showbase()
 __builtin__.taskMgr = taskMgr
 
-from realtime import clientagent, messagedirector, stateserver, database, types
+from realtime import io, types, clientagent, messagedirector, \
+    stateserver, database
 
 def main():
+    dc_loader = io.NetworkDCLoader()
+    dc_loader.read_dc_files(['config/dclass/toon.dc'])
+
     message_director = messagedirector.MessageDirector('0.0.0.0', 7100)
     message_director.setup()
 
-    client_agent = clientagent.ClientAgent('0.0.0.0', 6667, '127.0.0.1', 7100,
+    client_agent = clientagent.ClientAgent(dc_loader, '0.0.0.0', 6667, '127.0.0.1', 7100,
         types.CLIENTAGENT_CHANNEL)
 
     client_agent.setup()
 
-    state_server = stateserver.StateServer('127.0.0.1', 7100,
+    state_server = stateserver.StateServer(dc_loader, '127.0.0.1', 7100,
         types.STATESERVER_CHANNEL)
 
     state_server.setup()
 
-    database_server = database.DatabaseServer('127.0.0.1', 7100,
+    database_server = database.DatabaseServer(dc_loader, '127.0.0.1', 7100,
         types.DATABASE_CHANNEL)
 
     database_server.setup()

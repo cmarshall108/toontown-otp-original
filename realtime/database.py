@@ -112,8 +112,8 @@ class JsonDatabase(DatabaseBackend):
 class DatabaseServer(io.NetworkConnector):
     notify = directNotify.newCategory('DatabaseServer')
 
-    def __init__(self, address, port, channel):
-        io.NetworkConnector.__init__(self, address, port, channel)
+    def __init__(self, dc_loader, address, port, channel):
+        io.NetworkConnector.__init__(self, dc_loader, address, port, channel)
 
         self.backend = JsonDatabase()
 

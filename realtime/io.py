@@ -4,9 +4,10 @@
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
-from panda3d.core import QueuedConnectionManager, QueuedConnectionListener, QueuedConnectionReader, ConnectionWriter, \
-    PointerToConnection, NetAddress, NetDatagram, DatagramIterator
+from panda3d.core import QueuedConnectionManager, QueuedConnectionListener, QueuedConnectionReader, \
+    ConnectionWriter, PointerToConnection, NetAddress, NetDatagram, DatagramIterator, Filename
 
+from panda3d.direct import DCFile
 from realtime import types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
@@ -14,6 +15,92 @@ class NetworkError(RuntimeError):
     """
     A network specific runtime error
     """
+
+class NetworkDCLoader(object):
+    notify = directNotify.newCategory('NetworkDCLoader')
+
+    def __init__(self):
+        self._dc_file = DCFile()
+        self._dc_file.clear()
+        self._dc_suffix = ""
+
+        self._dclasses_by_name = {}
+        self._dclasses_by_number = {}
+
+        self._hash_value = 0
+
+    @property
+    def dc_file(self):
+        return self._dc_file
+
+    @property
+    def dc_suffix(self):
+        return self._dc_suffix
+
+    @property
+    def dclasses_by_name(self):
+        return self._dclasses_by_name
+
+    @property
+    def dclasses_by_number(self):
+        return self._dclasses_by_number
+
+    @property
+    def hash_value(self):
+        return self._hash_value
+
+    def read_dc_files(self, dc_file_names=None):
+        dc_imports = {}
+        if dc_file_names == None:
+            read_result = self._dc_file.read_all()
+            if not read_result:
+                self.notify.error("Could not read dc file.")
+        else:
+            for dc_fileName in dc_file_names:
+                pathname = Filename(dc_fileName)
+                read_result = self._dc_file.read(pathname)
+                if not read_result:
+                    self.notify.error("Could not read dc file: %s" % (
+                        pathname))
+
+        self._hash_value = self._dc_file.get_hash()
+
+        # Now get the class definition for the classes named in the DC
+        # file.
+        for i in range(self._dc_file.get_num_classes()):
+            dclass = self._dc_file.get_class(i)
+            number = dclass.get_number()
+            class_name = dclass.get_name() + self._dc_suffix
+
+            # Does the class have a definition defined in the newly
+            # imported namespace?
+            class_def = dc_imports.get(class_name)
+
+            # Also try it without the dc_suffix.
+            if class_def == None:
+                class_name = dclass.get_name()
+                class_def = dc_imports.get(class_name)
+
+            if class_def == None:
+                self.notify.debug("No class definition for %s." % (
+                    class_name))
+            else:
+                if inspect.ismodule(class_def):
+                    if not hasattr(class_def, class_name):
+                        self.notify.error("Module %s does not define class %s." % (
+                            class_name, class_name))
+
+                    class_def = getattr(class_def, class_name)
+
+                if not inspect.isclass(class_def):
+                    self.notify.error("Symbol %s is not a class name." % (
+                        class_name))
+                else:
+                    dclass.set_class_def(class_def)
+
+            self._dclasses_by_name[class_name] = dclass
+            if number >= 0:
+                self._dclasses_by_number[number] = dclass
 
 class NetworkManager(object):
     notify = directNotify.newCategory('NetworkManager')
@@ -24,9 +111,10 @@ class NetworkManager(object):
 class NetworkConnector(NetworkManager):
     notify = directNotify.newCategory('NetworkConnector')
 
-    def __init__(self, address, port, channel, timeout=5000):
+    def __init__(self, dc_loader, address, port, channel, timeout=5000):
         NetworkManager.__init__(self)
 
+        self.dc_loader = dc_loader
         self.__address = address
         self.__port = port
         self.channel = channel
