@@ -66,7 +66,7 @@ class StateServer(io.NetworkConnector):
         datagram.add_uint64(sender)
         datagram.add_uint64(self.channel)
         datagram.add_uint16(types.STATESERVER_GET_SHARD_ALL_RESP)
-        datagram.add_uint64(di.get_uint64())
+        datagram.add_uint64(sender)
         datagram.add_uint16(len(self.shard_manager.shards))
 
         for shard in self.shard_manager.get_shards():
