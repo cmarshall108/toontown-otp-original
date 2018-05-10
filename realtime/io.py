@@ -106,7 +106,7 @@ class NetworkManager(object):
     notify = directNotify.newCategory('NetworkManager')
 
     def get_unique_name(self, name):
-        return '%s-%s-%d' % (self.__class__.__name__, name, id(self))
+        return '%s-%s-%s' % (self.__class__.__name__, name, id(self))
 
 class NetworkConnector(NetworkManager):
     notify = directNotify.newCategory('NetworkConnector')
