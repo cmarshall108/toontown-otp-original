@@ -11,6 +11,9 @@ from direct.directnotify.DirectNotifyGlobal import directNotify
 class Participant(io.NetworkHandler):
     notify = directNotify.newCategory('Participant')
 
+    def __init__(self, *args, **kwargs):
+        io.NetworkHandler.__init__(self, *args, **kwargs)
+
     def handle_datagram(self, di):
         try:
             code = di.get_uint8()
@@ -34,9 +37,13 @@ class Participant(io.NetworkHandler):
                 return self.handle_disconnect()
 
             if message_type == types.CONTROL_SET_CHANNEL:
-                self.network.interface.register_channel(self, sender)
+                self.network.interface.add_channel(self, sender)
             elif message_type == types.CONTROL_REMOVE_CHANNEL:
-                self.network.interface.unregister_channel(self, sender)
+                self.network.interface.remove_channel(self, sender)
+            elif message_type == types.CONTROL_ADD_POST_REMOVE:
+                pass
+            elif message_type == types.CONTROL_CLEAR_POST_REMOVE:
+                pass
         else:
             try:
                 sender = di.get_uint64()
@@ -49,23 +56,27 @@ class ParticipantInterface(object):
     notify = directNotify.newCategory('ParticipantInterface')
 
     def __init__(self):
-        self.participants = {}
+        self._participants = {}
 
-    def is_registered(self, channel):
-        return channel in self.participants
+    @property
+    def participants(self):
+        return self._participants
 
-    def register_channel(self, participant, channel):
-        if self.is_registered(channel):
+    def has_channel(self, channel):
+        return channel in self._participants
+
+    def add_channel(self, participant, channel):
+        if self.has_channel(channel):
             return
 
         participant.channel = channel
-        self.participants[participant.channel] = participant
+        self._participants[participant.channel] = participant
 
-    def unregister_channel(self, participant, channel):
-        if not self.is_registered(participant.channel):
+    def remove_channel(self, participant, channel):
+        if not self.has_channel(participant.channel):
             return
 
-        del self.participants[participant.channel]
+        del self._participants[participant.channel]
         participant.channel = None
 
 class MessageDirector(io.NetworkListener):
@@ -74,16 +85,20 @@ class MessageDirector(io.NetworkListener):
     def __init__(self, address, port):
         io.NetworkListener.__init__(self, address, port, Participant)
 
-        self.interface = ParticipantInterface()
+        self._interface = ParticipantInterface()
+
+    @property
+    def interface(self):
+        return self._interface
 
     def handle_route_message(self, participant, channel, sender, di):
-        if not self.interface.is_registered(channel):
+        if not self._interface.has_channel(channel):
             self.notify.warning('Cannot route message to channel: %d, channel is not a participant!' % (
                 channel))
 
             return
 
-        if not self.interface.is_registered(sender):
+        if not self._interface.has_channel(sender):
             self.notify.warning('Cannot route message to channel: %d, sender %d is not a participant!' % (
                 channel, sender))
 
@@ -94,4 +109,4 @@ class MessageDirector(io.NetworkListener):
         datagram.add_uint64(sender)
         datagram.add_uint16(di.get_uint16())
         datagram.append_data(di.get_remaining_bytes())
-        self.interface.participants[channel].handle_send_datagram(datagram)
+        self._interface.participants[channel].handle_send_datagram(datagram)

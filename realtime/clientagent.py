@@ -44,16 +44,20 @@ class Client(io.NetworkHandler):
             self.handle_login(di)
         elif message_type == types.CLIENT_GET_SHARD_LIST:
             self.handle_get_shard_list()
+        elif message_type == types.CLIENT_GET_AVATARS:
+            self.handle_get_avatar_list()
         elif message_type == types.CLIENT_DISCONNECT:
             self.handle_disconnect()
         else:
-            self.notify.warning('Unknown datagram recieved with message type: %d!' % message_type)
+            self.notify.warning('Unknown datagram recieved with message type: %d!' % (
+                message_type))
 
     def handle_internal_datagram(self, message_type, sender, di):
         if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
             self.handle_get_shard_list_resp(di)
         else:
-            self.notify.warning('Unknown internal datagram recieved with message type: %d!' % message_type)
+            self.notify.warning('Unknown internal datagram recieved with message type: %d!' % (
+                message_type))
 
     def handle_login(self, di):
         play_token = di.get_string()
@@ -61,8 +65,6 @@ class Client(io.NetworkHandler):
         hash_val = di.get_uint32()
         token_type = di.get_int32()
 
-        # TODO: implement some sort of mongo database account systems
-        # using the database server...
         datagram = NetDatagram()
         datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
         datagram.add_uint8(0)
@@ -87,6 +89,13 @@ class Client(io.NetworkHandler):
         datagram = NetDatagram()
         datagram.add_uint16(types.CLIENT_GET_SHARD_LIST_RESP)
         datagram.append_data(di.get_remaining_bytes())
+        self.handle_send_datagram(datagram)
+
+    def handle_get_avatar_list(self):
+        datagram = NetDatagram()
+        datagram.add_uint16(types.CLIENT_GET_AVATARS_RESP)
+        datagram.add_uint8(0)
+        datagram.add_uint16(0)
         self.handle_send_datagram(datagram)
 
     def shutdown(self):
