@@ -23,10 +23,10 @@ class Client(io.NetworkHandler):
             self.channel = self.network.channel_allocator.allocate()
             self.register_for_channel(self.channel)
 
-    def handle_send_disconnect(self, error_code, reason):
+    def handle_send_disconnect(self, code, reason):
         datagram = NetDatagram()
         datagram.add_uint16(types.CLIENT_GO_GET_LOST)
-        datagram.add_uint16(error_code)
+        datagram.add_uint16(code)
         datagram.add_string(reason)
 
         self.handle_send_datagram(datagram)
