@@ -13,7 +13,7 @@ class Participant(io.NetworkHandler):
 
     def handle_datagram(self, di, datagram):
         try:
-            code = di.get_uint8()
+            code = di.get_int8()
         except:
             return self.handle_disconnect()
 
@@ -78,6 +78,15 @@ class MessageDirector(io.NetworkListener):
 
     def handle_route_message(self, participant, channel, sender, di):
         if not self.interface.is_registered(channel):
+            self.notify.warning('Cannot route message to channel: %d, channel is not a participant!' % (
+                channel))
+
+            return
+
+        if not self.interface.is_registered(sender):
+            self.notify.warning('Cannot route message to channel: %d, sender %d is not a participant!' % (
+                channel, sender))
+
             return
 
         datagram = NetDatagram()

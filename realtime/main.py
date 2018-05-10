@@ -18,19 +18,25 @@ from direct.task.TaskManagerGlobal import taskMgr
 __builtin__.config = get_config_showbase()
 __builtin__.taskMgr = taskMgr
 
-from realtime import clientagent, messagedirector, stateserver, database
+from realtime import clientagent, messagedirector, stateserver, database, types
 
 def main():
     message_director = messagedirector.MessageDirector('0.0.0.0', 7100)
     message_director.setup()
 
-    client_agent = clientagent.ClientAgent('0.0.0.0', 6667, '127.0.0.1', 7100, 1000)
+    client_agent = clientagent.ClientAgent('0.0.0.0', 6667, '127.0.0.1', 7100,
+        types.CLIENTAGENT_CHANNEL)
+
     client_agent.setup()
 
-    state_server = stateserver.StateServer('127.0.0.1', 7100, 1001)
+    state_server = stateserver.StateServer('127.0.0.1', 7100,
+        types.STATESERVER_CHANNEL)
+
     state_server.setup()
 
-    database_server = database.DatabaseServer('127.0.0.1', 7100, 1002)
+    database_server = database.DatabaseServer('127.0.0.1', 7100,
+        types.DATABASE_CHANNEL)
+
     database_server.setup()
 
 if __name__ == '__main__':

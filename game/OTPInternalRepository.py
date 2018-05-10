@@ -1,20 +1,98 @@
-from pandac.PandaModules import *
+import collections
+
+from panda3d.core import *
+from direct.distributed.MsgTypes import *
+from realtime.types import *
+from direct.showbase import ShowBase # __builtin__.config
+from direct.task.TaskManagerGlobal import * # taskMgr
 from direct.directnotify import DirectNotifyGlobal
 from direct.distributed.ConnectionRepository import ConnectionRepository
-from src.util.PyDatagram import PyDatagram
+from direct.distributed.PyDatagram import PyDatagram
 from direct.distributed.PyDatagramIterator import PyDatagramIterator
-from game.DistributedToonAI import DistributedToonAI
-from src.util.MsgTypes import *
-from src.util.types import *
-import string, types, ast
+
+# Helper functions for logging output:
+def msgpack_length(dg, length, fix, maxfix, tag8, tag16, tag32):
+    if length < maxfix:
+        dg.addUint8(fix + length)
+    elif tag8 is not None and length < 1<<8:
+        dg.addUint8(tag8)
+        dg.addUint8(length)
+    elif tag16 is not None and length < 1<<16:
+        dg.addUint8(tag16)
+        dg.addBeUint16(length)
+    elif tag32 is not None and length < 1<<32:
+        dg.addUint8(tag32)
+        dg.addBeUint32(length)
+    else:
+        raise ValueError('Value too big for MessagePack')
+
+def msgpack_encode(dg, element):
+    if element == None:
+        dg.addUint8(0xc0)
+    elif element is False:
+        dg.addUint8(0xc2)
+    elif element is True:
+        dg.addUint8(0xc3)
+    elif isinstance(element, (int, long)):
+        if -32 <= element < 128:
+            dg.addInt8(element)
+        elif 128 <= element < 256:
+            dg.addUint8(0xcc)
+            dg.addUint8(element)
+        elif 256 <= element < 65536:
+            dg.addUint8(0xcd)
+            dg.addBeUint16(element)
+        elif 65536 <= element < (1<<32):
+            dg.addUint8(0xce)
+            dg.addBeUint32(element)
+        elif (1<<32) <= element < (1<<64):
+            dg.addUint8(0xcf)
+            dg.addBeUint64(element)
+        elif -128 <= element < -32:
+            dg.addUint8(0xd0)
+            dg.addInt8(element)
+        elif -32768 <= element < -128:
+            dg.addUint8(0xd1)
+            dg.addBeInt16(element)
+        elif -1<<31 <= element < -32768:
+            dg.addUint8(0xd2)
+            dg.addBeInt32(element)
+        elif -1<<63 <= element < -1<<31:
+            dg.addUint8(0xd3)
+            dg.addBeInt64(element)
+        else:
+            raise ValueError('int out of range for msgpack: %d' % element)
+    elif isinstance(element, dict):
+        msgpack_length(dg, len(element), 0x80, 0x10, None, 0xde, 0xdf)
+        for k,v in element.items():
+            msgpack_encode(dg, k)
+            msgpack_encode(dg, v)
+    elif isinstance(element, list):
+        msgpack_length(dg, len(element), 0x90, 0x10, None, 0xdc, 0xdd)
+        for v in element:
+            msgpack_encode(dg, v)
+    elif isinstance(element, basestring):
+        # 0xd9 is str 8 in all recent versions of the MsgPack spec, but somehow
+        # Logstash bundles a MsgPack implementation SO OLD that this isn't
+        # handled correctly so this function avoids it too
+        msgpack_length(dg, len(element), 0xa0, 0x20, None, 0xda, 0xdb)
+        dg.appendData(element)
+    elif isinstance(element, float):
+        # Python does not distinguish between floats and doubles, so we send
+        # everything as a double in MsgPack:
+        dg.addUint8(0xcb)
+        dg.addBeFloat64(element)
+    else:
+        raise TypeError('Encountered non-MsgPack-packable value: %r' % element)
 
 class OTPInternalRepository(ConnectionRepository):
     notify = DirectNotifyGlobal.directNotify.newCategory("OTPInternalRepository")
 
-    def __init__(self, baseChannel, serverId=None, dcFileNames = None, dcSuffix = 'AI', connectMethod = None, threadedNet = None):
+    def __init__(self, baseChannel, serverId=None, dcFileNames = None,
+                 dcSuffix = 'AI', connectMethod = None, threadedNet = None):
         if connectMethod is None:
-            connectMethod = self.CM_HTTP
-        ConnectionRepository.__init__(self, connectMethod, config, hasOwnerView = False)
+            connectMethod = self.CM_NATIVE
+        ConnectionRepository.__init__(self, connectMethod, config, hasOwnerView = False, threadedNet = threadedNet)
         self.setClientDatagram(False)
         self.dcSuffix = dcSuffix
         if hasattr(self, 'setVerbose'):
@@ -30,8 +108,16 @@ class OTPInternalRepository(ConnectionRepository):
         maxChannels = self.config.GetInt('air-channel-allocation', 1000000)
         self.channelAllocator = UniqueIdAllocator(baseChannel, baseChannel+maxChannels-1)
         self._registeredChannels = set()
-        self.contextAllocator = UniqueIdAllocator(0, 100)
+
+        self.__contextCounter = 0
+
+        #self.netMessenger = NetMessenger(self)
+
+        #self.dbInterface = AstronDatabaseInterface(self)
+        self.__callbacks = {}
+
         self.ourChannel = self.allocateChannel()
+
         self.eventLogId = self.config.GetString('eventlog-id', 'AIR:%d' % self.ourChannel)
         self.eventSocket = None
         eventLogHost = self.config.GetString('eventlog-host', '')
@@ -44,8 +130,9 @@ class OTPInternalRepository(ConnectionRepository):
 
         self.readDCFile(dcFileNames)
 
-    def uniqueName(self, name=''):
-        return name
+    def getContext(self):
+        self.__contextCounter = (self.__contextCounter + 1) & 0xFFFFFFFF
+        return self.__contextCounter
 
     def allocateChannel(self):
         """
@@ -76,7 +163,8 @@ class OTPInternalRepository(ConnectionRepository):
         self._registeredChannels.add(channel)
 
         dg = PyDatagram()
-        dg.addServerHeader(channel, self.ourChannel, CONTROL_SET_CHANNEL)
+        dg.addServerControlHeader(CONTROL_SET_CHANNEL)
+        dg.addChannel(channel)
         self.send(dg)
 
     def unregisterForChannel(self, channel):
@@ -90,7 +178,8 @@ class OTPInternalRepository(ConnectionRepository):
         self._registeredChannels.remove(channel)
 
         dg = PyDatagram()
-        dg.addServerHeader(channel, self.ourChannel, CONTROL_REMOVE_CHANNEL)
+        dg.addServerControlHeader(CONTROL_REMOVE_CHANNEL)
+        dg.addChannel(channel)
         self.send(dg)
 
     def addPostRemove(self, dg):
@@ -105,6 +194,7 @@ class OTPInternalRepository(ConnectionRepository):
 
         dg2 = PyDatagram()
         dg2.addServerControlHeader(CONTROL_ADD_POST_REMOVE)
+        dg2.addUint64(self.ourChannel)
         dg2.addString(dg.getMessage())
         self.send(dg2)
 
@@ -118,234 +208,54 @@ class OTPInternalRepository(ConnectionRepository):
         """
 
         dg = PyDatagram()
-        dg.addServerControlHeader(CONTROL_CLEAR_POST_REMOVE)
+        dg.addServerControlHeader(CONTROL_CLEAR_POST_REMOVES)
+        dg.addUint64(self.ourChannel)
         self.send(dg)
 
     def handleDatagram(self, di):
         msgType = self.getMsgType()
 
-        if msgType == STATESERVER_OBJECT_QUERY_FIELDS:
-            self.handleRecieveFieldUpdate(di)
-        elif msgType == CLIENT_GET_AVATAR_DETAILS_RESP:
-            self.handleAvatarGenerate(di)
+        if msgType in (STATESERVER_OBJECT_ENTER_AI_WITH_REQUIRED,
+                       STATESERVER_OBJECT_ENTER_AI_WITH_REQUIRED_OTHER):
+            self.handleObjEntry(di, msgType == STATESERVER_OBJECT_ENTER_AI_WITH_REQUIRED_OTHER)
+        elif msgType in (STATESERVER_OBJECT_CHANGING_AI,
+                         STATESERVER_OBJECT_DELETE_RAM):
+            self.handleObjExit(di)
+        elif msgType == STATESERVER_OBJECT_CHANGING_LOCATION:
+            self.handleObjLocation(di)
+        #elif msgType in (DBSERVER_CREATE_OBJECT_RESP,
+        #                 DBSERVER_OBJECT_GET_ALL_RESP,
+        #                 DBSERVER_OBJECT_GET_FIELDS_RESP,
+        #                 DBSERVER_OBJECT_GET_FIELD_RESP,
+        #                 DBSERVER_OBJECT_SET_FIELD_IF_EQUALS_RESP,
+        #                 DBSERVER_OBJECT_SET_FIELDS_IF_EQUALS_RESP):
+        #    self.dbInterface.handleDatagram(msgType, di)
+        elif msgType == DBSS_OBJECT_GET_ACTIVATED_RESP:
+            self.handleGetActivatedResp(di)
+        elif msgType == STATESERVER_OBJECT_GET_LOCATION_RESP:
+            self.handleGetLocationResp(di)
+        elif msgType == STATESERVER_OBJECT_GET_ALL_RESP:
+            self.handleGetObjectResp(di)
+        elif msgType == CLIENTAGENT_GET_NETWORK_ADDRESS_RESP:
+            self.handleGetNetworkAddressResp(di)
+        #elif msgType >= 20000:
+        #    # These messages belong to the NetMessenger:
+        #    self.netMessenger.handle(msgType, di)
+        else:
+            self.notify.warning('Received message with unknown MsgType=%d' % msgType)
 
-    def handleAvatarGenerate(self, di):
-        target = di.getUint64()
-        avatarId = di.getUint32()
-        fields = ast.literal_eval(di.getString())
-        dclass = self.dclassesByName['DistributedToonAI']
-
-        if int(fields['setAvatarId']) != avatarId:
-            return # We've got a hacker, or a mistake!
-
-        datagram = PyDatagram()
-        datagram.addServerHeader(CLIENT_AGENT_CHANNEL, self.ourChannel, CONTROL_MESSAGE)
-        datagram.addUint16(CLIENT_SET_AVATAR)
-        datagram.addChannel(target)
-        datagram.addUint16(CLIENT_GET_AVATAR_DETAILS_RESP)
-        datagram.addUint32(int(fields['setAvatarId']))
-        datagram.addUint8(0) # Return code.
-
-        avDg = PyDatagram()
-
-        DistributedToon = DistributedToonAI(self)
-        DistributedToon.generate()
-        DistributedToon.announceGenerate()
-
-        DistributedToon.setName(fields['setName'])
-        field = dclass.getFieldByName('setName')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setDNAString(fields['setDNAString'])
-        field = dclass.getFieldByName('setDNAString')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setMaxBankMoney(fields['setMaxBankMoney'])
-        field = dclass.getFieldByName('setMaxBankMoney')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setBankMoney(fields['setBankMoney'])
-        field = dclass.getFieldByName('setBankMoney')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setMaxMoney(fields['setMaxMoney'])
-        field = dclass.getFieldByName('setMaxMoney')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setMoney(fields['setMoney'])
-        field = dclass.getFieldByName('setMoney')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setMaxHp(fields['setMaxHp'])
-        field = dclass.getFieldByName('setMaxHp')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setHp(fields['setHp'])
-        field = dclass.getFieldByName('setHp')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setExperience(fields['setExperience'])
-        field = dclass.getFieldByName('setExperience')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setMaxCarry(fields['setMaxCarry'])
-        field = dclass.getFieldByName('setMaxCarry')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setTrackAccess(fields['setTrackAccess'])
-        field = dclass.getFieldByName('setTrackAccess')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setTrackProgress(fields['setTrackProgress'])
-        field = dclass.getFieldByName('setTrackProgress')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setInventory(fields['setInventory'])
-        field = dclass.getFieldByName('setInventory')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setFriendsList(fields['setFriendsList'])
-        field = dclass.getFieldByName('setFriendsList')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setDefaultShard(fields['setDefaultShard'])
-        field = dclass.getFieldByName('setDefaultShard')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setDefaultZone(fields['setDefaultZone'])
-        field = dclass.getFieldByName('setDefaultZone')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setShtickerBook(fields['setShtickerBook'])
-        field = dclass.getFieldByName('setShtickerBook')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setZonesVisited(fields['setZonesVisited'])
-        field = dclass.getFieldByName('setZonesVisited')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setHoodsVisited(fields['setHoodsVisited'])
-        field = dclass.getFieldByName('setHoodsVisited')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setInterface(fields['setInterface'])
-        field = dclass.getFieldByName('setInterface')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setAccountName(fields['setAccountName'])
-        field = dclass.getFieldByName('setAccountName')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setLastHood(fields['setLastHood'])
-        field = dclass.getFieldByName('setLastHood')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setTutorialAck(fields['setTutorialAck'])
-        field = dclass.getFieldByName('setTutorialAck')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setMaxClothes(fields['setMaxClothes'])
-        field = dclass.getFieldByName('setMaxClothes')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setClothesTopsList(fields['setClothesTopsList'])
-        field = dclass.getFieldByName('setClothesTopsList')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setClothesBottomsList(fields['setClothesBottomsList'])
-        field = dclass.getFieldByName('setClothesBottomsList')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setEmoteAccess(fields['setEmoteAccess'])
-        field = dclass.getFieldByName('setEmoteAccess')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setTeleportAccess(fields['setTeleportAccess'])
-        field = dclass.getFieldByName('setTeleportAccess')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setCogStatus(fields['setCogStatus'])
-        field = dclass.getFieldByName('setCogStatus')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setCogCount(fields['setCogCount'])
-        field = dclass.getFieldByName('setCogCount')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setCogRadar(fields['setCogRadar'])
-        field = dclass.getFieldByName('setCogRadar')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setBuildingRadar(fields['setBuildingRadar'])
-        field = dclass.getFieldByName('setBuildingRadar')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setFishes(fields['setFishes'])
-        field = dclass.getFieldByName('setFishes')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setHouseId(fields['setHouseId'])
-        field = dclass.getFieldByName('setHouseId')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setQuests(fields['setQuests'])
-        field = dclass.getFieldByName('setQuests')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setQuestHistory(fields['setQuestHistory'])
-        field = dclass.getFieldByName('setQuestHistory')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setRewardHistory(fields['setRewardHistory'])
-        field = dclass.getFieldByName('setRewardHistory')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setQuestCarryLimit(fields['setQuestCarryLimit'])
-        field = dclass.getFieldByName('setQuestCarryLimit')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setCheesyEffect(fields['setCheesyEffect'])
-        field = dclass.getFieldByName('setCheesyEffect')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        DistributedToon.setPosIndex(fields['setPosIndex'])
-        field = dclass.getFieldByName('setPosIndex')
-        dclass.packRequiredField(avDg, DistributedToon, field)
-        avDi = PyDatagramIterator(avDg)
-        requiredFields = avDi.getRemainingBytes()
-
-        # Store the toon...
-        DistributedToon.doId = int(fields['setAvatarId'])
-        DistributedToon.generate()
-        DistributedToon.announceGenerate()
-
-        # TODO: FIX ME!
-        try:
-            self.addDOToTables(DistributedToon, location=(200000000, 2000))
-        except:
-            pass
-
-        dg = PyDatagram()
-        dg.addServerHeader(STATE_SERVER_CHANNEl, self.ourChannel, CONTROL_MESSAGE)
-        dg.addUint16(CLIENT_SET_AVATAR_RESP)
-        dg.addChannel(target)
-        dg.addUint32(DistributedToon.doId)
-        dg.addUint32(200000000)
-        dg.addUint16(2000)
-        dg.addUint16(dclass.getNumber())
-        dg.appendData(requiredFields)
-        self.send(dg)
-
-        datagram.appendData(requiredFields)
-        self.send(datagram)
-
-    def handleRecieveFieldUpdate(self, di):
+    def handleObjLocation(self, di):
         doId = di.getUint32()
-        dclass = di.getUint16()
-        fieldId = di.getUint16()
+        parentId = di.getUint32()
+        zoneId = di.getUint32()
 
-        # Repack the approiate values.
-        datagram = PyDatagram()
-        datagram.appendData(di.getRemainingBytes())
+        do = self.doId2do.get(doId)
 
-        # Security check.
-        if doId not in self.doId2do:
-            return # Invalid update from a doId!
-
-        dclass = self.dclassesByName[self.doId2do[doId].__class__.__name__]
-        
-        """
-        # This fixes the dclass field count index issue.
-        nextFieldNum = -1
-        self.fields = {}
-
-        for i in range(0, dclass.getNumInheritedFields()):
-            if dclass.getFieldByIndex(i) != None:
-                nextFieldNum += 1
-                fieldTarget = dclass.getFieldByIndex(i)
-                self.fields[fieldTarget.getNumber()] = nextFieldNum
-            else:
-                if dclass.getInheritedField(i) != None:
-                    nextFieldNum += 1
-                    fieldTarget = dclass.getInheritedField(i)
-                    self.fields[fieldTarget.getNumber()] = nextFieldNum
-        """
-
-        # Find the field by the index we've recieved.
-        print 'done field'
-        field = dclass.getInheritedField(fieldId)
-
-        do = dclass.getClassDef()(self)
-        do.dclass = dclass
-        do.doId = doId
-
-        do.generate()
-        print field.getName()
-        try:
-            dclass.directUpdate(do, field.getName(), datagram)
-        except:
+        if not do:
+            self.notify.warning('Received location for unknown doId=%d!' % (doId))
             return
+
+        do.setLocation(parentId, zoneId)
 
     def handleObjEntry(self, di, other):
         doId = di.getUint32()
@@ -385,13 +295,164 @@ class OTPInternalRepository(ConnectionRepository):
             return
 
         do = self.doId2do[doId]
-        do.sendDeleteEvent()
         self.removeDOFromTables(do)
         do.delete()
+        do.sendDeleteEvent()
+
+    def handleGetActivatedResp(self, di):
+        ctx = di.getUint32()
+        doId = di.getUint32()
+        activated = di.getUint8()
+
+        if ctx not in self.__callbacks:
+            self.notify.warning('Received unexpected DBSS_OBJECT_GET_ACTIVATED_RESP (ctx: %d)' %ctx)
+            return
+
+        try:
+            self.__callbacks[ctx](doId, activated)
+        finally:
+            del self.__callbacks[ctx]
+
+
+    def getActivated(self, doId, callback):
+        ctx = self.getContext()
+        self.__callbacks[ctx] = callback
+
+        dg = PyDatagram()
+        dg.addServerHeader(doId, self.ourChannel, DBSS_OBJECT_GET_ACTIVATED)
+        dg.addUint32(ctx)
+        dg.addUint32(doId)
+        self.send(dg)
+
+    def getLocation(self, doId, callback):
+        """
+        Ask a DistributedObject where it is.
+
+        You should already be sure the object actually exists, otherwise the
+        callback will never be called.
+
+        Callback is called as: callback(doId, parentId, zoneId)
+        """
+
+        ctx = self.getContext()
+        self.__callbacks[ctx] = callback
+        dg = PyDatagram()
+        dg.addServerHeader(doId, self.ourChannel, STATESERVER_OBJECT_GET_LOCATION)
+        dg.addUint32(ctx)
+        self.send(dg)
+
+    def handleGetLocationResp(self, di):
+        ctx = di.getUint32()
+        doId = di.getUint32()
+        parentId = di.getUint32()
+        zoneId = di.getUint32()
+
+        if ctx not in self.__callbacks:
+            self.notify.warning('Received unexpected STATESERVER_OBJECT_GET_LOCATION_RESP (ctx: %d)' % ctx)
+            return
+
+        try:
+            self.__callbacks[ctx](doId, parentId, zoneId)
+        finally:
+            del self.__callbacks[ctx]
+
+    def getObject(self, doId, callback):
+        """
+        Get the entire state of an object.
+
+        You should already be sure the object actually exists, otherwise the
+        callback will never be called.
+
+        Callback is called as: callback(doId, parentId, zoneId, dclass, fields)
+        """
+
+        ctx = self.getContext()
+        self.__callbacks[ctx] = callback
+        dg = PyDatagram()
+        dg.addServerHeader(doId, self.ourChannel, STATESERVER_OBJECT_GET_ALL)
+        dg.addUint32(ctx)
+        dg.addUint32(doId)
+        self.send(dg)
+
+    def handleGetObjectResp(self, di):
+        ctx = di.getUint32()
+        doId = di.getUint32()
+        parentId = di.getUint32()
+        zoneId = di.getUint32()
+        classId = di.getUint16()
+
+        if ctx not in self.__callbacks:
+            self.notify.warning('Received unexpected STATESERVER_OBJECT_GET_ALL_RESP (ctx: %d)' % ctx)
+            return
+
+        if classId not in self.dclassesByNumber:
+            self.notify.warning('Received STATESERVER_OBJECT_GET_ALL_RESP for unknown dclass=%d! (Object %d)' % (classId, doId))
+            return
+
+        dclass = self.dclassesByNumber[classId]
+
+        fields = {}
+        unpacker = DCPacker()
+        unpacker.setUnpackData(di.getRemainingBytes())
+
+        # Required:
+        for i in xrange(dclass.getNumInheritedFields()):
+            field = dclass.getInheritedField(i)
+            if not field.isRequired() or field.asMolecularField(): continue
+            unpacker.beginUnpack(field)
+            fields[field.getName()] = field.unpackArgs(unpacker)
+            unpacker.endUnpack()
+
+        # Other:
+        other = unpacker.rawUnpackUint16()
+        for i in xrange(other):
+            field = dclass.getFieldByIndex(unpacker.rawUnpackUint16())
+            unpacker.beginUnpack(field)
+            fields[field.getName()] = field.unpackArgs(unpacker)
+            unpacker.endUnpack()
+
+        try:
+            self.__callbacks[ctx](doId, parentId, zoneId, dclass, fields)
+        finally:
+            del self.__callbacks[ctx]
+
+    def getNetworkAddress(self, clientId, callback):
+        """
+        Get the endpoints of a client connection.
+
+        You should already be sure the client actually exists, otherwise the
+        callback will never be called.
+
+        Callback is called as: callback(remoteIp, remotePort, localIp, localPort)
+        """
+
+        ctx = self.getContext()
+        self.__callbacks[ctx] = callback
+        dg = PyDatagram()
+        dg.addServerHeader(clientId, self.ourChannel, CLIENTAGENT_GET_NETWORK_ADDRESS)
+        dg.addUint32(ctx)
+        self.send(dg)
+
+    def handleGetNetworkAddressResp(self, di):
+        ctx = di.getUint32()
+        remoteIp = di.getString()
+        remotePort = di.getUint16()
+        localIp = di.getString()
+        localPort = di.getUint16()
+
+        if ctx not in self.__callbacks:
+            self.notify.warning('Received unexpected CLIENTAGENT_GET_NETWORK_ADDRESS_RESP (ctx: %d)' % ctx)
+            return
+
+        try:
+            self.__callbacks[ctx](remoteIp, remotePort, localIp, localPort)
+        finally:
+            del self.__callbacks[ctx]
 
     def sendUpdate(self, do, fieldName, args):
         """
         Send a field update for the given object.
+
         You should use do.sendUpdate(...) instead. This is not meant to be
         called directly unless you really know what you are doing.
         """
@@ -401,41 +462,70 @@ class OTPInternalRepository(ConnectionRepository):
     def sendUpdateToChannel(self, do, channelId, fieldName, args):
         """
         Send an object field update to a specific channel.
+
         This is useful for directing the update to a specific client or node,
         rather than at the State Server managing the object.
+
         You should use do.sendUpdateToChannel(...) instead. This is not meant
         to be called directly unless you really know what you are doing.
         """
 
         dclass = do.dclass
         field = dclass.getFieldByName(fieldName)
+        dg = field.aiFormatUpdate(do.doId, channelId, self.ourChannel, args)
+        self.send(dg)
 
-        # This fixes the dclass field count index issue.
-        nextFieldNum = -1
-        self.fields = {}
+    def sendActivate(self, doId, parentId, zoneId, dclass=None, fields=None):
+        """
+        Activate a DBSS object, given its doId, into the specified parentId/zoneId.
 
-        nextFieldNum = -1
-        self.fields = {}
-
-        for i in range(0, dclass.getNumInheritedFields()):
-            if dclass.getInheritedField(i) != None:
-                nextFieldNum += 1
-                fieldTarget = dclass.getInheritedField(i)
-                self.fields[fieldTarget.getNumber()] = nextFieldNum
+        If both dclass and fields are specified, an ACTIVATE_WITH_DEFAULTS_OTHER
+        will be sent instead. In other words, the specified fields will be
+        auto-applied during the activation.
+        """
 
         fieldPacker = DCPacker()
-        fieldPacker.rawPackUint16(self.fields[field.getNumber()])
-        fieldPacker.beginPack(field)
-        field.packArgs(fieldPacker, args)
-        fieldPacker.endPack()
+        fieldCount = 0
+        if dclass and fields:
+            for k,v in fields.items():
+                field = dclass.getFieldByName(k)
+                if not field:
+                    self.notify.error('Activation request for %s object contains '
+                                      'invalid field named %s' % (dclass.getName(), k))
 
-        datagram = PyDatagram()
-        datagram.addServerHeader(STATE_SERVER_CHANNEl, self.ourChannel, CONTROL_MESSAGE)
-        datagram.addUint16(STATESERVER_OBJECT_UPDATE_FIELD)
-        datagram.addChannel(channelId)
-        datagram.addUint32(do.doId)
-        datagram.appendData(fieldPacker.getString())
-        self.send(datagram)
+                fieldPacker.rawPackUint16(field.getNumber())
+                fieldPacker.beginPack(field)
+                field.packArgs(fieldPacker, v)
+                fieldPacker.endPack()
+                fieldCount += 1
+
+            dg = PyDatagram()
+            dg.addServerHeader(doId, self.ourChannel, DBSS_OBJECT_ACTIVATE_WITH_DEFAULTS)
+            dg.addUint32(doId)
+            dg.addUint32(0)
+            dg.addUint32(0)
+            self.send(dg)
+            # DEFAULTS_OTHER isn't implemented yet, so we chase it with a SET_FIELDS
+            dg = PyDatagram()
+            dg.addServerHeader(doId, self.ourChannel, STATESERVER_OBJECT_SET_FIELDS)
+            dg.addUint32(doId)
+            dg.addUint16(fieldCount)
+            dg.appendData(fieldPacker.getString())
+            self.send(dg)
+            # Now slide it into the zone we expect to see it in (so it
+            # generates onto us with all of the fields in place)
+            dg = PyDatagram()
+            dg.addServerHeader(doId, self.ourChannel, STATESERVER_OBJECT_SET_LOCATION)
+            dg.addUint32(parentId)
+            dg.addUint32(zoneId)
+            self.send(dg)
+        else:
+            dg = PyDatagram()
+            dg.addServerHeader(doId, self.ourChannel, DBSS_OBJECT_ACTIVATE_WITH_DEFAULTS)
+            dg.addUint32(doId)
+            dg.addUint32(parentId)
+            dg.addUint32(zoneId)
+            self.send(dg)
 
     def sendSetLocation(self, do, parentId, zoneId):
         dg = PyDatagram()
@@ -444,52 +534,35 @@ class OTPInternalRepository(ConnectionRepository):
         dg.addUint32(zoneId)
         self.send(dg)
 
-    def generateWithRequired(self, do, parentId, zoneId, optionalFields=[]): # TODO: optionalFields
+    def generateWithRequired(self, do, parentId, zoneId, optionalFields=[]):
         """
         Generate an object onto the State Server, choosing an ID from the pool.
 
-        You should probably use do.generateWithRequired(...) instead.
+        You should use do.generateWithRequired(...) instead. This is not meant
+        to be called directly unless you really know what you are doing.
         """
-        self.generateWithRequiredAndId(do, parentId, zoneId, optionalFields)
 
-    def generateWithRequiredAndId(self, do, parentId, zoneId, optionalFields=[]):
+        doId = self.allocateChannel()
+        self.generateWithRequiredAndId(do, doId, parentId, zoneId, optionalFields)
+
+    def generateWithRequiredAndId(self, do, doId, parentId, zoneId, optionalFields=[]):
         """
         Generate an object onto the State Server, specifying its ID and location.
 
-        You should probably use do.generateWithRequiredAndId(...) instead.
+        You should use do.generateWithRequiredAndId(...) instead. This is not
+        meant to be called directly unless you really know what you are doing.
         """
 
-        do.preAllocateDoId()
-        # Generate the do.
-        do.generate()
-        do.announceGenerate()
-        
+        do.doId = doId
         self.addDOToTables(do, location=(parentId, zoneId))
-        #do.sendGenerateWithRequired(self, parentId, zoneId, optionalFields)
-        
-        # Send generate to the state server.
-        dclass = self.dclassesByName[do.__class__.__name__]
-        dg = PyDatagram()
-        dg.addServerHeader(STATE_SERVER_CHANNEl, self.ourChannel, CONTROL_MESSAGE)
-        dg.addUint16(STATESERVER_OBJECT_GENERATE_WITH_REQUIRED_OTHER)
-        dg.addUint32(do.doId)
-        dg.addUint32(parentId)
-        dg.addUint32(zoneId)
-        dg.addUint32(dclass.getNumber())
-
-        for i in range(0, dclass.getNumInheritedFields()):
-            field = dclass.getInheritedField(i)
-
-            if field.isRequired():
-                dclass.packRequiredField(dg, do, field)
-
-        self.send(dg)
+        do.sendGenerateWithRequired(self, parentId, zoneId, optionalFields)
 
     def requestDelete(self, do):
         """
         Request the deletion of an object that already exists on the State Server.
 
-        You should probably use do.requestDelete() instead.
+        You should use do.requestDelete() instead. This is not meant to be
+        called directly unless you really know what you are doing.
         """
 
         dg = PyDatagram()
@@ -497,7 +570,7 @@ class OTPInternalRepository(ConnectionRepository):
         dg.addUint32(do.doId)
         self.send(dg)
 
-    def connect(self, host, port=7101):
+    def connect(self, host, port=7199):
         """
         Connect to a Message Director. The airConnected message is sent upon
         success.
@@ -521,6 +594,15 @@ class OTPInternalRepository(ConnectionRepository):
 
         # Listen to our channel...
         self.registerForChannel(self.ourChannel)
+
+        # If we're configured with a State Server, register a post-remove to
+        # clean up whatever objects we own on this server should we unexpectedly
+        # fall over and die.
+        if self.serverId:
+            dg = PyDatagram()
+            dg.addServerHeader(self.serverId, self.ourChannel, STATESERVER_DELETE_AI_OBJECTS)
+            dg.addChannel(self.ourChannel)
+            self.addPostRemove(dg)
 
         messenger.send('airConnected')
         self.handleConnected()
@@ -564,7 +646,7 @@ class OTPInternalRepository(ConnectionRepository):
             self.eventSocket = SocketUDPOutgoing()
             self.eventSocket.InitToAddress(address)
 
-    def writeServerEvent(self, logtype, *args):
+    def writeServerEvent(self, logtype, *args, **kwargs):
         """
         Write an event to the central Event Logger, if one is configured.
 
@@ -576,15 +658,86 @@ class OTPInternalRepository(ConnectionRepository):
         if self.eventSocket is None:
             return # No event logger configured!
 
+        log = collections.OrderedDict()
+        log['type'] = logtype
+        log['sender'] = self.eventLogId
+
+        for i,v in enumerate(args):
+            # +1 because the logtype was _0, so we start at _1
+            log['_%d' % (i+1)] = v
+
+        log.update(kwargs)
+
         dg = PyDatagram()
-        dg.addString(self.eventLogId)
-        dg.addString(logtype)
-        for arg in args:
-            dg.addString(str(arg))
+        msgpack_encode(dg, log)
         self.eventSocket.Send(dg.getMessage())
 
-    def claimOwnership(self, districtId):
+    def setAI(self, doId, aiChannel):
+        """
+        Sets the AI of the specified DistributedObjectAI to be the specified channel.
+        Generally, you should not call this method, and instead call DistributedObjectAI.setAI.
+        """
+
         dg = PyDatagram()
-        dg.addServerHeader(districtId, self.ourChannel, STATESERVER_OBJECT_SET_AI)
-        dg.addChannel(self.ourChannel)
+        dg.addServerHeader(doId, aiChannel, STATESERVER_OBJECT_SET_AI)
+        dg.add_uint64(aiChannel)
+        self.send(dg)
+
+    def eject(self, clientChannel, reasonCode, reason):
+        """
+        Kicks the client residing at the specified clientChannel, using the specifed reasoning.
+        """
+
+        dg = PyDatagram()
+        dg.addServerHeader(clientChannel, self.ourChannel, CLIENTAGENT_EJECT)
+        dg.add_uint16(reasonCode)
+        dg.addString(reason)
+        self.send(dg)
+
+    def setClientState(self, clientChannel, state):
+        """
+        Sets the state of the client on the CA.
+        Useful for logging in and logging out, and for little else.
+        """
+
+        dg = PyDatagram()
+        dg.addServerHeader(clientChannel, self.ourChannel, CLIENTAGENT_SET_STATE)
+        dg.add_uint16(state)
+        self.send(dg)
+
+    def clientAddSessionObject(self, clientChannel, doId):
+        """
+        Declares the specified DistributedObject to be a "session object",
+        meaning that it is destroyed when the client disconnects.
+        Generally used for avatars owned by the client.
+        """
+
+        dg = PyDatagram()
+        dg.addServerHeader(clientChannel, self.ourChannel, CLIENTAGENT_ADD_SESSION_OBJECT)
+        dg.add_uint32(doId)
+        self.send(dg)
+
+    def clientAddInterest(self, clientChannel, interestId, parentId, zoneId):
+        """
+        Opens an interest on the behalf of the client. This, used in conjunction
+        with add_interest: visible (or preferably, disabled altogether), will mitigate
+        possible security risks.
+        """
+
+        dg = PyDatagram()
+        dg.addServerHeader(clientChannel, self.ourChannel, CLIENTAGENT_ADD_INTEREST)
+        dg.add_uint16(interestId)
+        dg.add_uint32(parentId)
+        dg.add_uint32(zoneId)
+        self.send(dg)
+
+    def setOwner(self, doId, newOwner):
+        """
+        Sets the owner of a DistributedObject. This will enable the new owner to send "ownsend" fields,
+        and will generate an OwnerView.
+        """
+
+        dg = PyDatagram()
+        dg.addServerHeader(doId, self.ourChannel, STATESERVER_OBJECT_SET_OWNER)
+        dg.add_uint64(newOwner)
         self.send(dg)

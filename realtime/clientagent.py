@@ -16,9 +16,6 @@ class Client(io.NetworkHandler):
     def __init__(self, network, rendezvous, address, connection):
         io.NetworkHandler.__init__(self, network, rendezvous, address, connection)
 
-        self.__heartbeat_timeout = 15
-        self.__heartbeat_task = None
-
     def setup(self):
         io.NetworkHandler.setup(self)
 
@@ -42,7 +39,7 @@ class Client(io.NetworkHandler):
             return self.handle_disconnect()
 
         if message_type == types.CLIENT_HEARTBEAT:
-            self.handle_heartbeat()
+            pass
         elif message_type == types.CLIENT_LOGIN_2:
             self.handle_login(di)
         elif message_type == types.CLIENT_GET_SHARD_LIST:
@@ -52,15 +49,11 @@ class Client(io.NetworkHandler):
         else:
             self.notify.warning('Unknown datagram recieved with message type: %d!' % message_type)
 
-    def handle_heartbeat(self):
-        if self.__heartbeat_task:
-            taskMgr.remove(self.__heartbeat_task)
-
-        self.__heartbeat_task = taskMgr.doMethodLater(self.__heartbeat_timeout, self.handle_heartbeat_timeout,
-            self.get_unique_name('client-heartbeat'))
-
-    def handle_heartbeat_timeout(self):
-        self.handle_send_disconnect(types.CLIENT_DISCONNECT_NO_HEARTBEAT, 'Server timed out while waiting for heartbeat.')
+    def handle_internal_datagram(self, message_type, sender, di):
+        if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
+            self.handle_get_shard_list_resp(di)
+        else:
+            self.notify.warning('Unknown internal datagram recieved with message type: %d!' % message_type)
 
     def handle_login(self, di):
         play_token = di.get_string()
@@ -92,10 +85,13 @@ class Client(io.NetworkHandler):
         datagram.add_uint64(self.channel)
         self.network.handle_send_connection_datagram(datagram)
 
-    def shutdown(self):
-        if self.__heartbeat_task:
-            taskMgr.remove(self.__heartbeat_task)
+    def handle_get_shard_list_resp(self, di):
+        datagram = NetDatagram()
+        datagram.add_uint16(types.CLIENT_GET_SHARD_LIST_RESP)
+        datagram.append_data(di.get_remaining_bytes())
+        self.handle_send_datagram(datagram)
 
+    def shutdown(self):
         if self.channel:
             self.network.channel_allocator.free(self.channel)
             self.unregister_for_channel(self.channel)
@@ -117,19 +113,12 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
         io.NetworkConnector.setup(self)
 
     def handle_datagram(self, sender, message_type, di):
-        if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
-            self.handle_get_shard_list_resp(di)
-
-    def handle_get_shard_list_resp(self, di):
         handler = self.get_handler_from_channel(di.get_uint64())
 
         if not handler:
             return
 
-        datagram = NetDatagram()
-        datagram.add_uint16(types.CLIENT_GET_SHARD_LIST_RESP)
-        datagram.append_data(di.get_remaining_bytes())
-        handler.handle_send_datagram(datagram)
+        handler.handle_internal_datagram(message_type, sender, di)
 
     def shutdown(self):
         io.NetworkListener.shutdown(self)
