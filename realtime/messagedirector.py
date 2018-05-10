@@ -13,7 +13,7 @@ class Participant(io.NetworkHandler):
 
     def handle_datagram(self, di, datagram):
         try:
-            code = di.get_int8()
+            code = di.get_uint8()
         except:
             return self.handle_disconnect()
 
@@ -91,5 +91,6 @@ class MessageDirector(io.NetworkListener):
 
         datagram = NetDatagram()
         datagram.add_uint64(sender)
+        datagram.add_uint16(di.get_uint16())
         datagram.append_data(di.get_remaining_bytes())
         self.interface.participants[channel].handle_send_datagram(datagram)
