@@ -131,7 +131,7 @@ class NetworkConnector(NetworkManager):
 
     def setup(self):
         if not self.__socket:
-            self.__socket = self.__manager.openTCPClientConnection(self.__address,
+            self.__socket = self.__manager.open_TCP_client_connection(self.__address,
                 self.__port, self.__timeout)
 
             if not self.__socket:
@@ -396,7 +396,7 @@ class NetworkListener(NetworkManager):
 
     def setup(self):
         if not self.__socket:
-            self.__socket = self.__manager.openTCPServerRendezvous(self.__address,
+            self.__socket = self.__manager.open_TCP_server_rendezvous(self.__address,
                 self.__port, self.__backlog)
 
             if not self.__socket:
