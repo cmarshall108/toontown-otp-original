@@ -48,8 +48,12 @@ class JsonFile(object):
         self.__save()
 
     def setdefault(self, key, value):
-        result = self._data.setdefault(key, value)
-        self.__save()
+        result = self._data.get(key)
+
+        if not result:
+            result = self._data.setdefault(key, value)
+            self.__save()
+
         return result
 
     def __save(self):
