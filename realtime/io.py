@@ -265,6 +265,9 @@ class NetworkHandler(NetworkManager):
         if not self.__update_task:
             self.__update_task = taskMgr.add(self.__update, self.get_unique_name('update-handler'))
 
+        if self.channel:
+            self.register_for_channel(self.channel)
+
     def register_for_channel(self, channel):
         """
         Registers our connections channel with the MessageDirector
@@ -359,6 +362,11 @@ class NetworkHandler(NetworkManager):
         Handles disconnection when the socket connection closes
         """
 
+        if self.channel:
+            self.unregister_for_channel(self.channel)
+
+        self.network.handle_disconnected(self)
+
     def shutdown(self):
         if self.__update_task:
             taskMgr.remove(self.__update_task)
@@ -436,7 +444,7 @@ class NetworkListener(NetworkManager):
 
         for handler in self.__handlers.values():
             if not self.__reader.is_connection_ok(handler.connection):
-                self.handle_disconnected(handler)
+                handler.handle_disconnected()
 
         return task.cont
 
@@ -467,9 +475,9 @@ class NetworkListener(NetworkManager):
         if not self.__has_handler(handler.connection):
             return
 
-        del self.__handlers[handler.connection]
-        self.__reader.remove_connection(handler.connection)
         handler.shutdown()
+        self.__reader.remove_connection(handler.connection)
+        del self.__handlers[handler.connection]
 
     def __handle_connection(self, rendezvous, address, connection):
         """
@@ -522,9 +530,7 @@ class NetworkListener(NetworkManager):
         Handles disconnection of a client socket instance
         """
 
-        handler.handle_disconnected()
-        self.__reader.remove_connection(handler.connection)
-        self.__remove_handler(self.__handlers[handler.connection])
+        self.__remove_handler(handler)
 
     def shutdown(self):
         if self.__listen_task:

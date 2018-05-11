@@ -17,11 +17,8 @@ class Client(io.NetworkHandler):
         io.NetworkHandler.__init__(self, network, rendezvous, address, connection)
 
     def setup(self):
+        self.channel = self.network.channel_allocator.allocate()
         io.NetworkHandler.setup(self)
-
-        if not self.channel:
-            self.channel = self.network.channel_allocator.allocate()
-            self.register_for_channel(self.channel)
 
     def handle_send_disconnect(self, code, reason):
         datagram = NetDatagram()
@@ -99,10 +96,7 @@ class Client(io.NetworkHandler):
         self.handle_send_datagram(datagram)
 
     def shutdown(self):
-        if self.channel:
-            self.network.channel_allocator.free(self.channel)
-            self.unregister_for_channel(self.channel)
-
+        self.network.channel_allocator.free(self.channel)
         io.NetworkHandler.shutdown(self)
 
 class ClientAgent(io.NetworkListener, io.NetworkConnector):

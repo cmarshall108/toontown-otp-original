@@ -48,6 +48,18 @@ class Participant(io.NetworkHandler):
 
             self.handle_datagram(di)
 
+        # clear all of our post removes from the message director's
+        # participant interface so we can create more later if our channel
+        # reconnects...
+        self.network.interface.remove_post_remove(self.channel)
+
+        # ensure our channel is removed from the interface when our connection
+        # is terminated, this will allow us to reuse this channel,
+        # if we reconnect in the future...
+        self.network.interface.remove_channel(self)
+
+        # our connection to the client was terminated, finish disconnecting
+        # and clear any channel subscription we may have...
         io.NetworkHandler.handle_disconnected(self)
 
 class ParticipantInterface(object):
@@ -99,7 +111,7 @@ class ParticipantInterface(object):
         if not self.has_post_remove(channel):
             return []
 
-        return self._post_removes.pop(channel)
+        return self._post_removes.get(channel)
 
 class MessageDirector(io.NetworkListener):
     notify = directNotify.newCategory('MessageDirector')
