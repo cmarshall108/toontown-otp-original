@@ -47,6 +47,12 @@ class AIRepository(OTPInternalRepository):
         dg.addUint32(self.districtPopulation)
         self.send(dg)
 
+        # add a post remove to remove the shard from the state server
+        # when we disconnect from the message director...
+        dg = PyDatagram()
+        dg.addServerHeader(self.serverId, self.ourChannel, STATESERVER_REMOVE_SHARD)
+        self.addPostRemove(dg)
+
         # create the AI globals...
     	self.createGlobals()
         self.createZones()

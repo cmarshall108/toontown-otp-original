@@ -190,6 +190,7 @@ class NetworkConnector(NetworkManager):
 
         if not self.__reader.is_connection_ok(self.__socket):
             self.handle_disconnected()
+            return task.done
 
         return task.cont
 
@@ -351,7 +352,7 @@ class NetworkHandler(NetworkManager):
         Disconnects our client socket instance
         """
 
-        self.network.handle_disconnected(self.connection)
+        self.network.handle_disconnect(self)
 
     def handle_disconnected(self):
         """
@@ -435,7 +436,7 @@ class NetworkListener(NetworkManager):
 
         for handler in self.__handlers.values():
             if not self.__reader.is_connection_ok(handler.connection):
-                self.handle_disconnected(handler.connection)
+                self.handle_disconnected(handler)
 
         return task.cont
 
@@ -509,19 +510,21 @@ class NetworkListener(NetworkManager):
 
         self.__writer.send(datagram, connection)
 
-    def handle_disconnected(self, connection):
+    def handle_disconnect(self, handler):
+        """
+        Disconnects the handlers client socket instance
+        """
+
+        self.__manager.close_connection(handler.connection)
+
+    def handle_disconnected(self, handler):
         """
         Handles disconnection of a client socket instance
         """
 
-        handler = self.__handlers.get(connection)
-
-        if not handler:
-            return
-
         handler.handle_disconnected()
-        self.__reader.remove_connection(connection)
-        self.__remove_handler(self.__handlers[connection])
+        self.__reader.remove_connection(handler.connection)
+        self.__remove_handler(self.__handlers[handler.connection])
 
     def shutdown(self):
         if self.__listen_task:

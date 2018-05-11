@@ -4,7 +4,7 @@
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
-from panda3d.core import NetDatagram
+from panda3d.core import DatagramIterator, NetDatagram
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
@@ -15,52 +15,55 @@ class Participant(io.NetworkHandler):
         io.NetworkHandler.__init__(self, *args, **kwargs)
 
     def handle_datagram(self, di):
-        try:
-            code = di.get_uint8()
-        except:
-            return self.handle_disconnect()
-
-        if code == 1:
+        if di.get_uint8() == 1:
             self.handle_control_message(di)
 
     def handle_control_message(self, di):
-        try:
-            channel = di.get_uint64()
-        except:
-            return self.handle_disconnect()
+        channel = di.get_uint64()
 
         if channel == types.CONTROL_MESSAGE:
-            try:
-                message_type = di.get_uint16()
-                sender = di.get_uint64()
-            except:
-                return self.handle_disconnect()
+            message_type = di.get_uint16()
+            sender = di.get_uint64()
 
             if message_type == types.CONTROL_SET_CHANNEL:
                 self.network.interface.add_channel(self, sender)
             elif message_type == types.CONTROL_REMOVE_CHANNEL:
-                self.network.interface.remove_channel(self, sender)
+                self.network.interface.remove_channel(self)
             elif message_type == types.CONTROL_ADD_POST_REMOVE:
-                pass
+                self.network.interface.add_post_remove(sender, NetDatagram(
+                    di.get_remaining_bytes()))
             elif message_type == types.CONTROL_CLEAR_POST_REMOVE:
-                pass
+                self.network.interface.clear_post_removes(sender)
         else:
-            try:
-                sender = di.get_uint64()
-            except:
-                return self.handle_disconnect()
+            self.network.handle_route_message(channel, di.get_uint64(), di)
 
-            self.network.handle_route_message(self, channel, sender, di)
+    def handle_disconnected(self):
+        # our connection has been terminated, tell all channels that are registered
+        # to receive an post remove event about the data...
+        for datagram in self.network.interface.get_post_removes(self.channel):
+            di = DatagramIterator(datagram)
+
+            if not di.get_remaining_size():
+                continue
+
+            self.handle_datagram(di)
+
+        io.NetworkHandler.handle_disconnected(self)
 
 class ParticipantInterface(object):
     notify = directNotify.newCategory('ParticipantInterface')
 
     def __init__(self):
         self._participants = {}
+        self._post_removes = {}
 
     @property
     def participants(self):
         return self._participants
+
+    @property
+    def post_removes(self):
+        return self._post_removes
 
     def has_channel(self, channel):
         return channel in self._participants
@@ -72,12 +75,31 @@ class ParticipantInterface(object):
         participant.channel = channel
         self._participants[participant.channel] = participant
 
-    def remove_channel(self, participant, channel):
+    def remove_channel(self, participant):
         if not self.has_channel(participant.channel):
             return
 
         del self._participants[participant.channel]
         participant.channel = None
+
+    def has_post_remove(self, channel):
+        return channel in self._post_removes
+
+    def add_post_remove(self, channel, datagram):
+        post_removes = self._post_removes.setdefault(channel, [])
+        post_removes.append(datagram)
+
+    def remove_post_remove(self, channel):
+        if not self.has_post_remove(channel):
+            return
+
+        del self._post_removes[channel]
+
+    def get_post_removes(self, channel):
+        if not self.has_post_remove(channel):
+            return []
+
+        return self._post_removes.pop(channel)
 
 class MessageDirector(io.NetworkListener):
     notify = directNotify.newCategory('MessageDirector')
@@ -91,7 +113,7 @@ class MessageDirector(io.NetworkListener):
     def interface(self):
         return self._interface
 
-    def handle_route_message(self, participant, channel, sender, di):
+    def handle_route_message(self, channel, sender, di):
         if not self._interface.has_channel(channel):
             self.notify.warning('Cannot route message to channel: %d, channel is not a participant!' % (
                 channel))
