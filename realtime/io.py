@@ -141,8 +141,8 @@ class NetworkConnector(NetworkManager):
             self.__reader.add_connection(self.__socket)
             self.register_for_channel(self.channel)
 
-        self.__read_task = taskMgr.add(self.__read_incoming, self.get_unique_name('read-incoming'))
-        self.__disconnect_task = taskMgr.add(self.__listen_disconnect, self.get_unique_name('listen-disconnect'))
+        self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name('read-incoming'))
+        self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name('listen-disconnect'))
 
     def register_for_channel(self, channel):
         """
@@ -239,10 +239,10 @@ class NetworkConnector(NetworkManager):
 
     def shutdown(self):
         if self.__read_task:
-            taskMgr.remove(self.__read_task)
+            task_mgr.remove(self.__read_task)
 
         if self.__disconnect_task:
-            taskMgr.remove(self.__disconnect_task)
+            task_mgr.remove(self.__disconnect_task)
 
         self.__read_task = None
         self.__disconnect_task = None
@@ -263,7 +263,7 @@ class NetworkHandler(NetworkManager):
 
     def setup(self):
         if not self.__update_task:
-            self.__update_task = taskMgr.add(self.__update, self.get_unique_name('update-handler'))
+            self.__update_task = task_mgr.add(self.__update, self.get_unique_name('update-handler'))
 
         if self.channel:
             self.register_for_channel(self.channel)
@@ -369,7 +369,7 @@ class NetworkHandler(NetworkManager):
 
     def shutdown(self):
         if self.__update_task:
-            taskMgr.remove(self.__update_task)
+            task_mgr.remove(self.__update_task)
 
 class NetworkListener(NetworkManager):
     notify = directNotify.newCategory('NetworkListener')
@@ -405,9 +405,9 @@ class NetworkListener(NetworkManager):
 
             self.__listener.add_connection(self.__socket)
 
-        self.__listen_task = taskMgr.add(self.__listen_incoming, self.get_unique_name('listen-incoming'))
-        self.__read_task = taskMgr.add(self.__read_incoming, self.get_unique_name('read-incoming'))
-        self.__disconnect_task = taskMgr.add(self.__listen_disconnect, self.get_unique_name('listen-disconnect'))
+        self.__listen_task = task_mgr.add(self.__listen_incoming, self.get_unique_name('listen-incoming'))
+        self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name('read-incoming'))
+        self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name('listen-disconnect'))
 
     def __listen_incoming(self, task):
         """
@@ -534,13 +534,13 @@ class NetworkListener(NetworkManager):
 
     def shutdown(self):
         if self.__listen_task:
-            taskMgr.remove(self.__listen_task)
+            task_mgr.remove(self.__listen_task)
 
         if self.__read_task:
-            taskMgr.remove(self.__read_task)
+            task_mgr.remove(self.__read_task)
 
         if self.__disconnect_task:
-            taskMgr.remove(self.__disconnect_task)
+            task_mgr.remove(self.__disconnect_task)
 
         self.__listen_task = None
         self.__read_task = None

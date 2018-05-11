@@ -13,10 +13,10 @@ if os.path.exists('config/general.prc'):
     loadPrcFile('config/general.prc')
 
 from panda3d.direct import get_config_showbase
-from direct.task.TaskManagerGlobal import taskMgr
+from direct.task.TaskManagerGlobal import taskMgr as task_mgr
 
 __builtin__.config = get_config_showbase()
-__builtin__.taskMgr = taskMgr
+__builtin__.task_mgr = task_mgr
 
 from realtime import io, types, clientagent, messagedirector, \
     stateserver, database
@@ -28,8 +28,8 @@ def main():
     message_director = messagedirector.MessageDirector('0.0.0.0', 7100)
     message_director.setup()
 
-    client_agent = clientagent.ClientAgent(dc_loader, '0.0.0.0', 6667, '127.0.0.1', 7100,
-        types.CLIENTAGENT_CHANNEL)
+    client_agent = clientagent.ClientAgent(dc_loader, '0.0.0.0', 6667,
+        '127.0.0.1', 7100, types.CLIENTAGENT_CHANNEL)
 
     client_agent.setup()
 
@@ -45,4 +45,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    taskMgr.run()
+    task_mgr.run()
