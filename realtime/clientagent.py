@@ -5,10 +5,90 @@
 """
 
 import time
+import semidbm
 
 from panda3d.core import UniqueIdAllocator, NetDatagram
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
+from direct.fsm.FSM import FSM
+
+class ClientOperation(FSM):
+    notify = directNotify.newCategory('ClientOperation')
+
+    def __init__(self, client, play_token):
+        FSM.__init__(self, self.__class__.__name__)
+
+        self._client = client
+        self._play_token = play_token
+
+    def enterOff(self):
+        pass
+
+    def exitOff(self):
+        pass
+
+class ClientOperationManager(object):
+    notify = directNotify.newCategory('ClientOperationManager')
+
+    def __init__(self):
+        self._channel2fsm = {}
+
+    def has_fsm(self, channel):
+        return channel in self._channel2fsm
+
+    def add_fsm(self, channel, fsm):
+        if self.has_fsm(channel):
+            return None
+
+        self._channel2fsm[channel] = fsm
+        return fsm
+
+    def remove_fsm(self, channel):
+        if not self.has_fsm(channel):
+            return None
+
+        del self._channel2fsm[channel]
+
+    def get_fsm(self, channel):
+        return self._channel2fsm.get(channel)
+
+class AccountFSM(ClientOperation):
+    notify = directNotify.newCategory('AccountFSM')
+
+    def enterLoad(self):
+        pass
+
+    def exitLoad(self):
+        pass
+
+class ClientAccountManager(ClientOperationManager):
+    notify = directNotify.newCategory('ClientAccountManager')
+
+    def __init__(self):
+        self._channel2fsm = {}
+
+    def login(self, client, play_token):
+        fsm = self.add_fsm(client.channel, AccountFSM(client, play_token))
+
+        if not fsm:
+            self.notify.warning('Failed to add account operation for channel: %d with playtoken: %s!' % (
+                client.channel, play_token))
+
+            return
+
+        fsm.request('Load')
+
+    def abandon_login(self, client):
+        fsm = self.get_fsm(client.channel)
+
+        if not fsm:
+            self.notify.warning('Failed to abandon account operation for channel: %d!' % (
+                client.channel))
+
+            return
+
+        fsm.demand('Off')
+        self.remove_fsm(client.channel)
 
 class Client(io.NetworkHandler):
     notify = directNotify.newCategory('Client')
@@ -66,23 +146,19 @@ class Client(io.NetworkHandler):
         hash_val = di.get_uint32()
         token_type = di.get_int32()
 
-        if self.network.server_version != server_version:
+        if server_version != self.network.server_version:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_BAD_VERSION, "Invalid server version: %s, expected: %s!" % (
                 server_version, self.network.server_version))
 
             return
 
-        datagram = NetDatagram()
-        datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
-        datagram.add_uint8(0)
-        datagram.add_string('All Ok')
-        datagram.add_string(play_token)
-        datagram.add_uint8(1)
-        datagram.add_uint32(int(time.time()))
-        datagram.add_uint32(int(time.clock()))
-        datagram.add_uint8(1)
-        datagram.add_int32(1000 * 60 * 60)
-        self.handle_send_datagram(datagram)
+        if token_type != types.CLIENT_LOGIN_2_PLAY_TOKEN:
+            self.handle_send_datagram(types.CLIENT_DISCONNECT_INVALID_PLAY_TOKEN_TYPE, "Invalid play token type: %d!" % (
+                token_type))
+
+            return
+
+        self.network.account_manager.login(self, play_token)
 
     def handle_get_shard_list(self):
         datagram = NetDatagram()
@@ -114,6 +190,9 @@ class Client(io.NetworkHandler):
         avatar_id = di.get_uint32()
 
     def shutdown(self):
+        if self.network.account_manager.has_fsm(self.channel):
+            self.network.account_manager.abandon_login(self)
+
         self.network.channel_allocator.free(self.channel)
         io.NetworkHandler.shutdown(self)
 
@@ -129,6 +208,8 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
 
         self._server_version = config.GetString('server-version', 'no-version')
 
+        self._account_manager = ClientAccountManager()
+
     @property
     def channel_allocator(self):
         return self._channel_allocator
@@ -136,6 +217,10 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
     @property
     def server_version(self):
         return self._server_version
+
+    @property
+    def account_manager(self):
+        return self._account_manager
 
     def setup(self):
         io.NetworkListener.setup(self)
