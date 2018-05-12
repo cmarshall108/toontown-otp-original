@@ -301,10 +301,10 @@ class NetworkConnector(NetworkManager):
     def __init__(self, dc_loader, address, port, channel, timeout=5000):
         NetworkManager.__init__(self)
 
-        self.dc_loader = dc_loader
+        self._dc_loader = dc_loader
         self.__address = address
         self.__port = port
-        self.channel = channel
+        self._channel = channel
         self.__timeout = timeout
 
         self.__manager = QueuedConnectionManager()
@@ -316,6 +316,18 @@ class NetworkConnector(NetworkManager):
         self.__read_task = None
         self.__disconnect_task = None
 
+    @property
+    def dc_loader(self):
+        return self._dc_loader
+
+    @property
+    def channel(self):
+        return self._channel
+
+    @channel.setter
+    def channel(self, channel):
+        self._channel = channel
+
     def setup(self):
         if not self.__socket:
             self.__socket = self.__manager.open_TCP_client_connection(self.__address,
@@ -326,10 +338,13 @@ class NetworkConnector(NetworkManager):
                     self.__address, self.__port))
 
             self.__reader.add_connection(self.__socket)
-            self.register_for_channel(self.channel)
+            self.register_for_channel(self._channel)
 
-        self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name('read-incoming'))
-        self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name('listen-disconnect'))
+        self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name(
+            'read-incoming'))
+
+        self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name(
+            'listen-disconnect'))
 
     def register_for_channel(self, channel):
         """
@@ -414,7 +429,7 @@ class NetworkConnector(NetworkManager):
         Handles disconnection when the socket connection closes
         """
 
-        self.unregister_for_channel(self.channel)
+        self.unregister_for_channel(self._channel)
         self.__reader.remove_connection(self.__socket)
 
     def shutdown(self):
@@ -431,22 +446,47 @@ class NetworkHandler(NetworkManager):
     notify = directNotify.newCategory('NetworkHandler')
 
     def __init__(self, network, rendezvous, address, connection, channel=None):
-        self.network = network
-        self.rendezvous = rendezvous
-        self.address = address
-        self.connection = connection
-        self.channel = channel
+        self._network = network
+        self._rendezvous = rendezvous
+        self._address = address
+        self._connection = connection
+        self._channel = channel
 
         self.__data = []
 
         self.__update_task = None
 
+    @property
+    def network(self):
+        return self._network
+
+    @property
+    def rendezvous(self):
+        return self._rendezvous
+
+    @property
+    def address(self):
+        return self._address
+
+    @property
+    def connection(self):
+        return self._connection
+
+    @property
+    def channel(self):
+        return self._channel
+
+    @channel.setter
+    def channel(self, channel):
+        self._channel = channel
+
     def setup(self):
         if not self.__update_task:
-            self.__update_task = task_mgr.add(self.__update, self.get_unique_name('update-handler'))
+            self.__update_task = task_mgr.add(self.__update, self.get_unique_name(
+                'update-handler'))
 
-        if self.channel:
-            self.register_for_channel(self.channel)
+        if self._channel:
+            self.register_for_channel(self._channel)
 
     def register_for_channel(self, channel):
         """
@@ -455,7 +495,7 @@ class NetworkHandler(NetworkManager):
 
         datagram = NetworkDatagram()
         datagram.add_control_header(channel, types.CONTROL_SET_CHANNEL)
-        self.network.handle_send_connection_datagram(datagram)
+        self._network.handle_send_connection_datagram(datagram)
 
     def unregister_for_channel(self, channel):
         """
@@ -464,7 +504,7 @@ class NetworkHandler(NetworkManager):
 
         datagram = NetworkDatagram()
         datagram.add_control_header(channel, types.CONTROL_REMOVE_CHANNEL)
-        self.network.handle_send_connection_datagram(datagram)
+        self._network.handle_send_connection_datagram(datagram)
 
     def __update(self, task):
         """
@@ -515,7 +555,7 @@ class NetworkHandler(NetworkManager):
         Sends a datagram to our connection
         """
 
-        self.network.handle_send_datagram(datagram, self.connection)
+        self._network.handle_send_datagram(datagram, self._connection)
 
     def handle_datagram(self, di):
         """
@@ -527,21 +567,23 @@ class NetworkHandler(NetworkManager):
         Disconnects our client socket instance
         """
 
-        self.network.handle_disconnect(self)
+        self._network.handle_disconnect(self)
 
     def handle_disconnected(self):
         """
         Handles disconnection when the socket connection closes
         """
 
-        if self.channel:
-            self.unregister_for_channel(self.channel)
+        if self._channel:
+            self.unregister_for_channel(self._channel)
 
-        self.network.handle_disconnected(self)
+        self._network.handle_disconnected(self)
 
     def shutdown(self):
         if self.__update_task:
             task_mgr.remove(self.__update_task)
+
+        self.__update_task = None
 
 class NetworkListener(NetworkManager):
     notify = directNotify.newCategory('NetworkListener')
@@ -577,9 +619,14 @@ class NetworkListener(NetworkManager):
 
             self.__listener.add_connection(self.__socket)
 
-        self.__listen_task = task_mgr.add(self.__listen_incoming, self.get_unique_name('listen-incoming'))
-        self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name('read-incoming'))
-        self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name('listen-disconnect'))
+        self.__listen_task = task_mgr.add(self.__listen_incoming, self.get_unique_name(
+            'listen-incoming'))
+
+        self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name(
+            'read-incoming'))
+
+        self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name(
+            'listen-disconnect'))
 
     def __listen_incoming(self, task):
         """

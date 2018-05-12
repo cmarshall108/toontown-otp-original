@@ -137,16 +137,16 @@ class AccountFSM(ClientOperation):
         # it is now ok to mark the client as authenticated...
         self._client.authenticated = True
 
+        # call the callback our client object has specified,
+        # this will notify the game client of the successful login...
+        self._callback()
+
         # now since we've been authenticated and our account is setup,
         # let's switch our channel so that we receive updates
         # as the account_id instead of our default clientagent assigned channel...
         self._client.unregister_for_channel(self._client.channel)
         self._client.channel = account_id
         self._client.register_for_channel(self._client.channel)
-
-        # call the callback our client object has specified,
-        # this will notify the game client of the successful login...
-        self._callback()
 
         # we're all done.
         self.ignoreAll()
