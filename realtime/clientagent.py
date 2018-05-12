@@ -15,11 +15,12 @@ from direct.fsm.FSM import FSM
 class ClientOperation(FSM):
     notify = directNotify.newCategory('ClientOperation')
 
-    def __init__(self, client, play_token):
+    def __init__(self, client, play_token, callback):
         FSM.__init__(self, self.__class__.__name__)
 
         self._client = client
         self._play_token = play_token
+        self._callback = callback
 
     def enterOff(self):
         pass
@@ -67,8 +68,8 @@ class ClientAccountManager(ClientOperationManager):
     def __init__(self):
         ClientOperationManager.__init__(self)
 
-    def login(self, client, play_token):
-        fsm = self.add_fsm(client.channel, AccountFSM(client, play_token))
+    def login(self, client, play_token, callback=None):
+        fsm = self.add_fsm(client.channel, AccountFSM(client, play_token, callback))
 
         if not fsm:
             self.notify.warning('Failed to add account operation for channel: %d with playtoken: %s!' % (
@@ -96,11 +97,24 @@ class Client(io.NetworkHandler):
     def __init__(self, *args, **kwargs):
         io.NetworkHandler.__init__(self, *args, **kwargs)
 
+        self._authenticated = False
+
+    @property
+    def authenticated(self):
+        return self._authenticated
+
+    @authenticated.setter
+    def authenticated(self, authenticated):
+        self._authenticated = authenticated
+
     def setup(self):
         self.channel = self.network.channel_allocator.allocate()
         io.NetworkHandler.setup(self)
 
     def handle_send_disconnect(self, code, reason):
+        self.notify.warning('Disconnecting channel: %d, reason: %s!' % (
+            self.channel, reason))
+
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GO_GET_LOST)
         datagram.add_uint16(code)
@@ -119,7 +133,19 @@ class Client(io.NetworkHandler):
             pass
         elif message_type == types.CLIENT_LOGIN_2:
             self.handle_login(di)
-        elif message_type == types.CLIENT_GET_SHARD_LIST:
+        elif message_type == types.CLIENT_DISCONNECT:
+            self.handle_disconnect()
+        else:
+            if not self._authenticated:
+                self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, "Cannot send datagram with message type: %d, channel: %d not yet authenticated!" % (
+                    message_type, self.channel))
+
+                return
+            else:
+                self.handle_authenticated_datagram(message_type, di)
+
+    def handle_authenticated_datagram(self, message_type, di):
+        if message_type == types.CLIENT_GET_SHARD_LIST:
             self.handle_get_shard_list()
         elif message_type == types.CLIENT_GET_AVATARS:
             self.handle_get_avatars()
@@ -127,8 +153,6 @@ class Client(io.NetworkHandler):
             self.handle_create_avatar(di)
         elif message_type == types.CLIENT_SET_AVATAR:
             self.handle_set_avatar(di)
-        elif message_type == types.CLIENT_DISCONNECT:
-            self.handle_disconnect()
         else:
             self.notify.warning('Unknown datagram recieved with message type: %d!' % (
                 message_type))
@@ -158,7 +182,26 @@ class Client(io.NetworkHandler):
 
             return
 
-        self.network.account_manager.login(self, play_token)
+        def login_done(errorCode=None, errorString=None):
+            datagram = io.NetworkDatagram()
+            datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
+
+            if code:
+                datagram.add_uint8(errorCode)
+                datagram.add_string(errorString)
+            else:
+                datagram.add_uint8(0)
+                datagram.add_string('All Ok')
+                datagram.add_string(play_token)
+                datagram.add_uint8(1)
+                datagram.add_uint32(int(time.time()))
+                datagram.add_uint32(int(time.clock()))
+                datagram.add_uint8(1)
+                datagram.add_int32(1000 * 60 * 60)
+
+            self.handle_send_datagram(datagram)
+
+        self.network.account_manager.login(self, play_token, callback=login_done)
 
     def handle_get_shard_list(self):
         datagram = io.NetworkDatagram()
