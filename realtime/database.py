@@ -12,6 +12,7 @@ except:
     import json
 
 import yaml
+import pytoml as toml
 
 from panda3d.core import UniqueIdAllocator
 from panda3d.direct import DCPacker
@@ -100,6 +101,18 @@ class DatabaseYAMLFile(DatabaseFile):
     def load(self):
         with open(self._filename, 'r') as io:
             self._data = yaml.load(io)
+            io.close()
+
+class DatabaseTOMLFile(DatabaseFile):
+
+    def save(self):
+        with open(self._filename, 'w') as io:
+            toml.dump(self._data, io)
+            io.close()
+
+    def load(self):
+        with open(self._filename, 'r') as io:
+            self._data = toml.load(io)
             io.close()
 
 class DatabaseManager(object):
@@ -231,6 +244,11 @@ class DatabaseYAMLBackend(DatabaseManager):
 
     def __init__(self):
         DatabaseManager.__init__(self, DatabaseYAMLFile)
+
+class DatabaseTOMLBackend(DatabaseManager):
+
+    def __init__(self):
+        DatabaseManager.__init__(self, DatabaseTOMLFile)
 
 class DatabaseServer(io.NetworkConnector):
     notify = directNotify.newCategory('DatabaseServer')
