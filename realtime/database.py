@@ -41,8 +41,10 @@ class DatabaseFile(object):
         self._data = data
 
     def setup(self):
-        if os.path.exists(self._filename):
-            self.load()
+        if not os.path.exists(self._filename):
+            self.save()
+
+        self.load()
 
     def has_value(self, key):
         return key in self._data
