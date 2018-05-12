@@ -8,6 +8,8 @@ clientagent-port 6667
 clientagent-channel 1000
 clientagent-max-channels 1000001000
 clientagent-min-channels 1000000000
+clientagent-dbm-filename databases/database.dbm
+clientagent-dbm-mode c
 clientagent-version sv1.0.6.9
 
 # StateServer:

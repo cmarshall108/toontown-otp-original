@@ -5,10 +5,12 @@
 """
 
 import os
+
 try:
     import ujson
 except:
     import json as ujson
+
 import yaml
 
 from panda3d.core import UniqueIdAllocator

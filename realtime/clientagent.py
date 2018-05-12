@@ -68,6 +68,13 @@ class ClientAccountManager(ClientOperationManager):
     def __init__(self):
         ClientOperationManager.__init__(self)
 
+        self._dbm = semidbm.open(config.GetString('clientagent-dbm-filename', 'databases/database.dbm'),
+            config.GetString('clientagent-dbm-mode', 'c'))
+
+    @property
+    def dbm(self):
+        return self._dbm
+
     def login(self, client, play_token, callback=None):
         fsm = self.add_fsm(client.channel, AccountFSM(client, play_token, callback))
 
