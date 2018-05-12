@@ -7,9 +7,9 @@
 import os
 
 try:
-    import ujson
+    import ujson as json
 except:
-    import json as ujson
+    import json
 
 import yaml
 
@@ -81,27 +81,26 @@ class DatabaseFile(object):
 class DatabaseJSONFile(DatabaseFile):
 
     def save(self):
-        io = open(self._filename, 'w')
-        ujson.dump(self._data, io, indent=2, sort_keys=True)
-        io.close()
+        with open(self._filename, 'w') as io:
+            json.dump(self._data, io, indent=2, sort_keys=True)
+            io.close()
 
     def load(self):
-        io = open(self._filename, 'r')
-        self._data = ujson.load(io)
-        io.close()
+        with open(self._filename, 'r') as io:
+            self._data = json.load(io)
+            io.close()
 
 class DatabaseYAMLFile(DatabaseFile):
 
     def save(self):
-        io = open(self._filename, 'w')
-        output = yaml.dump(self._data, Dumper=yaml.Dumper, default_flow_style=False)
-        io.write(output)
-        io.close()
+        with open(self._filename, 'w') as io:
+            yaml.dump(self._data, io, default_flow_style=False)
+            io.close()
 
     def load(self):
-        io = open(self._filename, 'r')
-        self._data = yaml.load(io, Loader=yaml.Loader)
-        io.close()
+        with open(self._filename, 'r') as io:
+            self._data = yaml.load(io)
+            io.close()
 
 class DatabaseManager(object):
 
@@ -239,7 +238,7 @@ class DatabaseServer(io.NetworkConnector):
     def __init__(self, *args, **kwargs):
         io.NetworkConnector.__init__(self, *args, **kwargs)
 
-        self._backend = DatabaseJSONBackend()
+        self._backend = DatabaseYAMLBackend()
 
     @property
     def backend(self):
