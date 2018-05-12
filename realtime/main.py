@@ -25,23 +25,29 @@ def main():
     dc_loader = io.NetworkDCLoader()
     dc_loader.read_dc_files(['config/dclass/toon.dc'])
 
+    print "Starting Message Director!"
     message_director = messagedirector.MessageDirector('0.0.0.0', 7100)
     message_director.setup()
 
+    print "Starting Client Agent!"
     client_agent = clientagent.ClientAgent(dc_loader, '0.0.0.0', 6667,
         '127.0.0.1', 7100, types.CLIENTAGENT_CHANNEL)
 
     client_agent.setup()
 
+    print "Starting State Server!"
     state_server = stateserver.StateServer(dc_loader, '127.0.0.1', 7100,
         types.STATESERVER_CHANNEL)
 
     state_server.setup()
 
+    print "Starting Database Server!"
     database_server = database.DatabaseServer(dc_loader, '127.0.0.1', 7100,
         types.DATABASE_CHANNEL)
 
     database_server.setup()
+    
+    print "Startup complete!"
 
 if __name__ == '__main__':
     main()
