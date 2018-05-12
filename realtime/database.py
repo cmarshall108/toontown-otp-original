@@ -57,6 +57,7 @@ class DatabaseFile(object):
         self.save()
 
     def get_value(self, key):
+        self.load()
         return self._data.get(key)
 
     def set_default_value(self, key, value):
