@@ -202,6 +202,9 @@ class Client(io.NetworkHandler):
     def authenticated(self, authenticated):
         self._authenticated = authenticated
 
+    def startup(self):
+        io.NetworkHandler.startup(self)
+
     def handle_send_disconnect(self, code, reason):
         self.notify.warning('Disconnecting channel: %d, reason: %s' % (
             self.channel, reason))
@@ -329,7 +332,7 @@ class Client(io.NetworkHandler):
         if self.network.account_manager.has_fsm(self.channel):
             self.network.account_manager.abandon_login(self)
 
-        if not self._authenticated:
+        if self.channel:
             self.network.channel_allocator.free(self.channel)
 
         io.NetworkHandler.shutdown(self)
