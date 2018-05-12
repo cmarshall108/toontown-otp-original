@@ -6,106 +6,123 @@
 
 import os
 import ujson
+import yaml
 
 from panda3d.core import NetDatagram, UniqueIdAllocator
 from panda3d.direct import DCPacker
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
-class JsonFile(object):
-    notify = directNotify.newCategory('JsonFile')
+class DatabaseError(RuntimeError):
+    """
+    An database specific runtime error
+    """
 
-    def __init__(self, filepath, mode='r+'):
-        self._filepath = filepath
-        self._mode = mode
-        self._io = open(self._filepath, self._mode)
+class DatabaseFile(object):
+
+    def __init__(self, filename):
+        self._filename = filename
         self._data = {}
 
     @property
-    def filepath(self):
-        return self._filepath
+    def filename(self):
+        return self._filename
 
-    @property
-    def mode(self):
-        return self._mode
-
-    @property
-    def io(self):
-        return self._io
+    @filename.setter
+    def filename(self, filename):
+        self._filename = filename
 
     @property
     def data(self):
         return self._data
 
-    def setup(self):
-        self.__load()
+    @data.setter
+    def data(self, data):
+        self._data = data
 
-    def __getitem__(self, key):
+    def setup(self):
+        if os.path.exists(self._filename):
+            self.load()
+
+    def has_value(self, key):
+        return key in self._data
+
+    def set_value(self, key, value):
+        self._data[key] = value
+        self.save()
+
+    def get_value(self, key):
         return self._data.get(key)
 
-    def __setitem__(self, key, value):
-        self._data[key] = value
-        self.__save()
+    def set_default_value(self, key, value):
+        if self.has_value(key):
+            return self.get_value(key)
 
-    def setdefault(self, key, value):
-        result = self._data.get(key)
+        self.set_value(key, value)
+        return value
 
-        if not result:
-            result = self._data.setdefault(key, value)
-            self.__save()
+    def close(self):
+        self.save()
 
-        return result
+        self._filename = None
+        self._data = None
 
-    def __save(self):
-        self._io.write(str(ujson.dumps(self._data, indent=2)))
-        self.__load()
+    def shutdown(self):
+        self.close()
 
-    def __load(self):
-        try:
-            self._data = ujson.load(self._io)
-        except:
-            self.notify.debug('Failed to load json data from file: %s!' % (
-                self._filepath))
+class DatabaseJSONFile(DatabaseFile):
 
-class JsonFileManager(object):
-    notify = directNotify.newCategory('JsonFileManager')
+    def save(self):
+        io = open(self._filename, 'w')
+        ujson.dump(self._data, io, indent=2)
+        io.close()
 
-    def __init__(self, backend):
-        self.backend = backend
+    def load(self):
+        io = open(self._filename, 'r')
+        self._data = ujson.load(io)
+        io.close()
 
-        self._files = []
+class DatabaseYAMLFile(DatabaseFile):
+
+    def save(self):
+        io = open(self._filename, 'w')
+        output = yaml.dump(self._data, Dumper=yaml.Dumper, default_flow_style=False)
+        io.write(output)
+        io.close()
+
+    def load(self):
+        io = open(self._filename, 'r')
+        self._data = yaml.load(io, Loader=yaml.Loader)
+        io.close()
+
+class DatabaseManager(object):
+
+    def __init__(self, file_handler):
+        self._files = {}
+        self._file_handler = file_handler
+
+        self._min_id = config.GetInt('database-min-channels', 100000000)
+        self._max_id = config.GetInt('database-max-channels', 399999999)
+
+        self._directory = config.GetString('database-directory', 'databases/json')
+        self._extension = config.GetString('database-extension', '.json')
+
+        self._tracker = None
+        self._tracker_filename = config.GetString('database-tracker', 'next')
+
+        self._allocator = None
 
     @property
     def files(self):
         return self._files
 
-    def add_file(self, file):
-        if file in self._files:
-            return
+    @property
+    def file_handler(self):
+        return self._file_handler
 
-        self._files.append(file)
-
-    def remove_file(self, file):
-        if file not in self._files:
-            return
-
-        self._files.remove(file)
-
-    def setup(self, filepath):
-        file = JsonFile(filepath, 'w+' if not os.path.exists(
-            filepath) else 'r+')
-
-        file.setup()
-        self.add_file(file)
-        return file
-
-class DatabaseBackend(object):
-    notify = directNotify.newCategory('DatabaseBackend')
-
-    def __init__(self):
-        self._min_id = 0
-        self._max_id = 0
-        self._allocator = None
+    @file_handler.setter
+    def file_handler(self, file_handler):
+        self._file_handler = file_handler
 
     @property
     def min_id(self):
@@ -123,35 +140,87 @@ class DatabaseBackend(object):
     def max_id(self, max_id):
         self._max_id = max_id
 
+    @property
+    def directory(self):
+        return self._directory
+
+    @property
+    def extension(self):
+        return self._extension
+
+    @property
+    def tracker(self):
+        return self._tracker
+
+    @tracker.setter
+    def tracker(self, tracker):
+        self._tracker = tracker
+
+    @property
+    def tracker_filename(self):
+        return self._tracker_filename
+
+    @property
+    def allocator(self):
+        return self._allocator
+
+    @allocator.setter
+    def allocator(self, allocator):
+        self._allocator = allocator
+
     def setup(self):
+        self._tracker = self.open_file(self.get_filename(self._tracker_filename))
+        self._min_id = self._tracker.set_default_value('next', self._min_id)
         self._allocator = UniqueIdAllocator(self._min_id, self._max_id)
 
-class JsonDatabase(DatabaseBackend):
-    notify = directNotify.newCategory('JsonDatabase')
+    def has_file(self, filename):
+        return filename in self._files
 
-    def __init__(self):
-        DatabaseBackend.__init__(self)
+    def add_file(self, file):
+        if self.has_file(file.filename):
+            return
 
-        self._min_id = config.GetInt('database-min-channels', 100000000)
-        self._max_id = config.GetInt('database-max-channels', 399999999)
+        self._files[file.filename] = file
+        file.setup()
 
-        self.directory = config.GetString('database-directory', 'databases/json')
-        self.extension = config.GetString('database-extension', '.json')
+    def remove_file(self, file):
+        if not self.has_file(file.filename):
+            return
 
-        self.tracker_filename = config.GetString('database-tracker', 'next')
+        file.shutdown()
+        del self._files[file.filename]
 
-        if not os.path.exists(self.directory):
-            os.makedirs(self.directory)
-
-        self.file_manager = JsonFileManager(self)
-
-        self.tracker = self.file_manager.setup(self.get_filename(
-            self.tracker_filename))
-
-        self._min_id = self.tracker.setdefault('next', self._min_id)
+    def get_file(self, filename):
+        return self._files.get(filename)
 
     def get_filename(self, filename):
-        return '%s%s' % (os.path.join(self.directory, str(filename)), self.extension)
+        return '%s%s' % (os.path.join(self._directory, filename), self._extension)
+
+    def open_file(self, filename):
+        file = self._file_handler(filename)
+        self.add_file(file)
+        return file
+
+    def close_file(self, file):
+        if not isinstance(file, self._file_handler):
+            raise DatabaseError('Cannot close file of invalid type: %r, expected: %r!' % (
+                file, self._file_handler))
+
+        self.remove_file(file)
+
+    def shutdown(self):
+        for file in self._files:
+            self.remove_file(file)
+
+class DatabaseJSONBackend(DatabaseManager):
+
+    def __init__(self):
+        DatabaseManager.__init__(self, DatabaseJSONFile)
+
+class DatabaseYAMLBackend(DatabaseManager):
+
+    def __init__(self):
+        DatabaseManager.__init__(self, DatabaseYAMLFile)
 
 class DatabaseServer(io.NetworkConnector):
     notify = directNotify.newCategory('DatabaseServer')
@@ -159,16 +228,25 @@ class DatabaseServer(io.NetworkConnector):
     def __init__(self, dc_loader, address, port, channel):
         io.NetworkConnector.__init__(self, dc_loader, address, port, channel)
 
-        self._backend = JsonDatabase()
+        self._backend = DatabaseYAMLBackend()
 
     @property
     def backend(self):
         return self._backend
 
-    def setup(self):
-        io.NetworkConnector.setup(self)
+    @backend.setter
+    def backend(self, backend):
+        self._backend = backend
 
+    def setup(self):
         self._backend.setup()
+
+        io.NetworkConnector.setup(self)
 
     def handle_datagram(self, channel, sender, message_type, di):
         pass
+
+    def shutdown(self):
+        self._backend.shutdown()
+
+        io.NetworkConnector.shutdown(self)

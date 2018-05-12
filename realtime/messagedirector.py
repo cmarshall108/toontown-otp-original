@@ -30,36 +30,25 @@ class Participant(io.NetworkHandler):
             elif message_type == types.CONTROL_REMOVE_CHANNEL:
                 self.network.interface.remove_channel(self)
             elif message_type == types.CONTROL_ADD_POST_REMOVE:
+                if not di.get_remaining_size():
+                    return
+
                 self.network.interface.add_post_remove(sender, NetDatagram(
                     di.get_remaining_bytes()))
             elif message_type == types.CONTROL_CLEAR_POST_REMOVE:
-                self.network.interface.clear_post_removes(sender)
+                self.network.interface.remove_post_remove(self)
         else:
             self.network.handle_route_message(channel, di.get_uint64(), di)
 
+    def handle_post_removes(self):
+        for datagram in self.network.interface.get_post_removes(self):
+            self.handle_datagram(DatagramIterator(datagram))
+
+        self.network.interface.remove_post_remove(self)
+
     def handle_disconnected(self):
-        # our connection has been terminated, tell all channels that are registered
-        # to receive an post remove event about the data...
-        for datagram in self.network.interface.get_post_removes(self.channel):
-            di = DatagramIterator(datagram)
-
-            if not di.get_remaining_size():
-                continue
-
-            self.handle_datagram(di)
-
-        # clear all of our post removes from the message director's
-        # participant interface so we can create more later if our channel
-        # reconnects...
-        self.network.interface.remove_post_remove(self.channel)
-
-        # ensure our channel is removed from the interface when our connection
-        # is terminated, this will allow us to reuse this channel,
-        # if we reconnect in the future...
+        self.handle_post_removes()
         self.network.interface.remove_channel(self)
-
-        # our connection to the client was terminated, finish disconnecting
-        # and clear any channel subscription we may have...
         io.NetworkHandler.handle_disconnected(self)
 
 class ParticipantInterface(object):
@@ -94,6 +83,9 @@ class ParticipantInterface(object):
         del self._participants[participant.channel]
         participant.channel = None
 
+    def get_participant(self, channel):
+        return self._participants.get(channel)
+
     def has_post_remove(self, channel):
         return channel in self._post_removes
 
@@ -101,17 +93,17 @@ class ParticipantInterface(object):
         post_removes = self._post_removes.setdefault(channel, [])
         post_removes.append(datagram)
 
-    def remove_post_remove(self, channel):
-        if not self.has_post_remove(channel):
+    def remove_post_remove(self, participant):
+        if not self.has_post_remove(participant.channel):
             return
 
-        del self._post_removes[channel]
+        del self._post_removes[participant.channel]
 
-    def get_post_removes(self, channel):
-        if not self.has_post_remove(channel):
+    def get_post_removes(self, participant):
+        if not self.has_post_remove(participant.channel):
             return []
 
-        return self._post_removes.get(channel)
+        return self._post_removes.pop(participant.channel)
 
 class MessageDirector(io.NetworkListener):
     notify = directNotify.newCategory('MessageDirector')
@@ -138,9 +130,14 @@ class MessageDirector(io.NetworkListener):
 
             return
 
+        participant = self._interface.get_participant(channel)
+
+        if not participant:
+            return
+
         datagram = NetDatagram()
         datagram.add_uint64(channel)
         datagram.add_uint64(sender)
         datagram.add_uint16(di.get_uint16())
         datagram.append_data(di.get_remaining_bytes())
-        self._interface.participants[channel].handle_send_datagram(datagram)
+        participant.handle_send_datagram(datagram)

@@ -42,7 +42,11 @@ class Client(io.NetworkHandler):
         elif message_type == types.CLIENT_GET_SHARD_LIST:
             self.handle_get_shard_list()
         elif message_type == types.CLIENT_GET_AVATARS:
-            self.handle_get_avatar_list()
+            self.handle_get_avatars()
+        elif message_type == types.CLIENT_CREATE_AVATAR:
+            self.handle_create_avatar(di)
+        elif message_type == types.CLIENT_SET_AVATAR:
+            self.handle_set_avatar(di)
         elif message_type == types.CLIENT_DISCONNECT:
             self.handle_disconnect()
         else:
@@ -88,12 +92,20 @@ class Client(io.NetworkHandler):
         datagram.append_data(di.get_remaining_bytes())
         self.handle_send_datagram(datagram)
 
-    def handle_get_avatar_list(self):
+    def handle_get_avatars(self):
         datagram = NetDatagram()
         datagram.add_uint16(types.CLIENT_GET_AVATARS_RESP)
         datagram.add_uint8(0)
-        datagram.add_uint16(0)
+        datagram.add_uint16(1)
         self.handle_send_datagram(datagram)
+
+    def handle_create_avatar(self, di):
+        echo_context = di.get_uint16()
+        dna_string = di.get_string()
+        index = di.get_uint8()
+
+    def handle_set_avatar(self, di):
+        avatar_id = di.get_uint32()
 
     def shutdown(self):
         self.network.channel_allocator.free(self.channel)
