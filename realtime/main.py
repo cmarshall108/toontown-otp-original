@@ -31,9 +31,10 @@ def setup_component(cls, *args, **kwargs):
 
     component = cls(*args, **kwargs)
     component.setup()
+    return component
 
 def shutdown_component(cls):
-    notify.info('Stopping component: %s...' % (
+    notify.info('Shutting down component: %s...' % (
         cls.__name__))
 
     cls.shutdown()
