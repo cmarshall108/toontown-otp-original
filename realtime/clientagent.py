@@ -7,7 +7,7 @@
 import time
 import semidbm
 
-from panda3d.core import UniqueIdAllocator, NetDatagram
+from panda3d.core import UniqueIdAllocator
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 from direct.fsm.FSM import FSM
@@ -98,7 +98,7 @@ class Client(io.NetworkHandler):
         io.NetworkHandler.setup(self)
 
     def handle_send_disconnect(self, code, reason):
-        datagram = NetDatagram()
+        datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GO_GET_LOST)
         datagram.add_uint16(code)
         datagram.add_string(reason)
@@ -158,21 +158,18 @@ class Client(io.NetworkHandler):
         self.network.account_manager.login(self, play_token)
 
     def handle_get_shard_list(self):
-        datagram = NetDatagram()
-        datagram.add_uint8(1)
-        datagram.add_uint64(types.STATESERVER_CHANNEL)
-        datagram.add_uint64(self.channel)
-        datagram.add_uint16(types.STATESERVER_GET_SHARD_ALL)
+        datagram = io.NetworkDatagram()
+        datagram.add_header(types.STATESERVER_CHANNEL, self.channel, types.STATESERVER_GET_SHARD_ALL)
         self.network.handle_send_connection_datagram(datagram)
 
     def handle_get_shard_list_resp(self, di):
-        datagram = NetDatagram()
+        datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GET_SHARD_LIST_RESP)
         datagram.append_data(di.get_remaining_bytes())
         self.handle_send_datagram(datagram)
 
     def handle_get_avatars(self):
-        datagram = NetDatagram()
+        datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GET_AVATARS_RESP)
         datagram.add_uint8(0)
         datagram.add_uint16(0)

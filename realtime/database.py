@@ -8,7 +8,7 @@ import os
 import ujson
 import yaml
 
-from panda3d.core import NetDatagram, UniqueIdAllocator
+from panda3d.core import UniqueIdAllocator
 from panda3d.direct import DCPacker
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify

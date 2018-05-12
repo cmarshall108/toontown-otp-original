@@ -4,7 +4,6 @@
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
-from panda3d.core import NetDatagram
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
@@ -61,11 +60,8 @@ class StateServer(io.NetworkConnector):
         self.shard_manager.remove_shard(sender)
 
     def handle_get_shard_list(self, sender, di):
-        datagram = NetDatagram()
-        datagram.add_uint8(1)
-        datagram.add_uint64(sender)
-        datagram.add_uint64(self.channel)
-        datagram.add_uint16(types.STATESERVER_GET_SHARD_ALL_RESP)
+        datagram = io.NetworkDatagram()
+        datagram.add_header(sender, self.channel, types.STATESERVER_GET_SHARD_ALL_RESP)
         datagram.add_uint16(len(self.shard_manager.shards))
 
         for shard in self.shard_manager.get_shards():

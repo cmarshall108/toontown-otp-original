@@ -4,7 +4,7 @@
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
-from panda3d.core import DatagramIterator, NetDatagram
+from panda3d.core import DatagramIterator
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
@@ -33,7 +33,7 @@ class Participant(io.NetworkHandler):
                 if not di.get_remaining_size():
                     return
 
-                self.network.interface.add_post_remove(sender, NetDatagram(
+                self.network.interface.add_post_remove(sender, io.NetworkDatagram(
                     di.get_remaining_bytes()))
             elif message_type == types.CONTROL_CLEAR_POST_REMOVE:
                 self.network.interface.remove_post_remove(self)
@@ -135,9 +135,7 @@ class MessageDirector(io.NetworkListener):
         if not participant:
             return
 
-        datagram = NetDatagram()
-        datagram.add_uint64(channel)
-        datagram.add_uint64(sender)
-        datagram.add_uint16(di.get_uint16())
+        datagram = io.NetworkDatagram()
+        datagram.add_header(channel, sender, di.get_uint16())
         datagram.append_data(di.get_remaining_bytes())
         participant.handle_send_datagram(datagram)
