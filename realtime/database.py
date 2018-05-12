@@ -82,7 +82,7 @@ class DatabaseJSONFile(DatabaseFile):
 
     def save(self):
         io = open(self._filename, 'w')
-        ujson.dump(self._data, io, indent=2)
+        ujson.dump(self._data, io, indent=2, sort_keys=True)
         io.close()
 
     def load(self):
@@ -191,21 +191,21 @@ class DatabaseManager(object):
         if self.has_file(file.filename):
             return
 
-        self._files[file.filename] = file
         file.setup()
+        self._files[file.filename] = file
 
     def remove_file(self, file):
         if not self.has_file(file.filename):
             return
 
-        file.shutdown()
         del self._files[file.filename]
+        file.shutdown()
 
     def get_file(self, filename):
         return self._files.get(filename)
 
     def get_filename(self, filename):
-        return '%s%s' % (os.path.join(self._directory, filename), self._extension)
+        return '%s%s' % (os.path.join(self._directory, str(filename)), self._extension)
 
     def open_file(self, filename):
         file = self._file_handler(filename)
@@ -255,7 +255,116 @@ class DatabaseServer(io.NetworkConnector):
         io.NetworkConnector.setup(self)
 
     def handle_datagram(self, channel, sender, message_type, di):
-        pass
+        if message_type == types.DBSERVER_CREATE_OBJECT:
+            self.handle_create_object(sender, di)
+        elif message_type == types.DBSERVER_OBJECT_GET_ALL:
+            self.handle_object_get_all(sender, di)
+
+    def handle_create_object(self, sender, di):
+        context = di.get_uint32()
+        dc_id = di.get_uint16()
+        field_count = di.get_uint16()
+        dc_class = self.dc_loader.dclasses_by_number.get(dc_id)
+
+        if not dc_class:
+            self.notify.error('Failed to create object: %d context: %d, unknown dclass!' % (
+                dc_id, context))
+
+        do_id = self._backend.allocator.allocate()
+        file_object = self._backend.open_file(self._backend.get_filename(do_id))
+
+        file_object.set_value('dclass', dc_class.get_name())
+        file_object.set_value('do_id', do_id)
+
+        fields = {}
+        field_packer = DCPacker()
+        field_packer.set_unpack_data(di.get_remaining_bytes())
+
+        for _ in xrange(field_count):
+            field_id = field_packer.raw_unpack_uint16()
+            field = dc_class.get_field_by_index(field_id)
+
+            if not field:
+                self.notify.error('Failed to unpack field: %d dclass: %s, invalid field!' % (
+                    field_id, dclass.get_name()))
+
+            field_packer.begin_unpack(field)
+            field_args = field.unpack_args(field_packer)
+            field_packer.end_unpack()
+
+            if not field_args:
+                self.notify.error('Failed to unpack field args for field: %d dclass: %s, invalid result!' % (
+                    field.get_name(), dclass.get_name()))
+
+            fields[field.get_name()] = field_args[0]
+
+        file_object.set_value('fields', fields)
+
+        self._backend.close_file(file_object)
+        self._backend.tracker.set_value('next', do_id + 1)
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(sender, self.channel, types.DBSERVER_CREATE_OBJECT_RESP)
+        datagram.add_uint32(context)
+        datagram.add_uint32(do_id)
+        self.handle_send_connection_datagram(datagram)
+
+    def handle_object_get_all(self, sender, di):
+        context = di.get_uint32()
+        do_id = di.get_uint32()
+        file_object = self._backend.open_file(self._backend.get_filename(do_id))
+
+        if not file_object:
+            self.notify.warning('Cannot get fields for object: %d context: %d, unknown object!' % (
+                do_id, context))
+
+            return
+
+        dc_name = file_object.get_value('dclass')
+        dc_class = self.dc_loader.dclasses_by_name.get(dc_name)
+
+        if not dc_class:
+            self.notify.warning('Failed to query object: %d context: %d, unknown dclass: %s!' % (
+                dc_id, context, dc_name))
+
+            return
+
+        fields = file_object.get_value('fields')
+
+        if not fields:
+            self.notify.warning('Failed to query object: %d context %d, invalid fields!' % (
+                dc_id, context))
+
+            return
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(sender, self.channel, types.DBSERVER_OBJECT_GET_ALL_RESP)
+        datagram.add_uint32(context)
+        datagram.add_uint8(1)
+
+        field_packer = DCPacker()
+        field_count = 0
+        for key, value in fields.items():
+            field = dc_class.get_field_by_name(key)
+
+            if not field:
+                self.notify.warning('Failed to query object %d context: %d, unknown field: %s' % (
+                    do_id, context, key))
+
+                return
+
+            field_packer.raw_pack_uint16(field.get_number())
+            field_packer.begin_pack(field)
+            field.pack_args(field_packer, (value,))
+            field_packer.end_pack()
+            field_count += 1
+
+        self._backend.close_file(file_object)
+
+        datagram.add_uint16(dc_class.get_number())
+        datagram.add_uint16(field_count)
+        datagram.append_data(field_packer.get_string())
+        self.handle_send_connection_datagram(datagram)
 
     def shutdown(self):
         self._backend.shutdown()

@@ -7,7 +7,7 @@
 from panda3d.core import QueuedConnectionManager, QueuedConnectionListener, QueuedConnectionReader, \
     ConnectionWriter, PointerToConnection, NetAddress, NetDatagram, DatagramIterator, Filename
 
-from panda3d.direct import DCFile
+from panda3d.direct import DCFile, DCPacker
 from realtime import types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
@@ -34,6 +34,175 @@ class NetworkDatagram(NetDatagram):
         self.add_uint64(types.CONTROL_MESSAGE)
         self.add_uint16(message_type)
         self.add_uint64(channel)
+
+class NetworkDatabaseInterface(object):
+    notify = directNotify.newCategory('NetworkDatabaseInterface')
+
+    def __init__(self, network):
+        self._network = network
+
+        self._context = 0
+
+        self._callbacks = {}
+        self._dclasses = {}
+
+    def get_context(self):
+        self._context = (self._context + 1) & 0xFFFFFFFF
+        return self._context
+
+    def create_object(self, channel_id, database_id, dclass, fields={}, callback=None):
+        """
+        Create an object in the specified database.
+        database_id specifies the control channel of the target database.
+        dclass specifies the class of the object to be created.
+        fields is a dict with any fields that should be stored in the object on creation.
+        callback will be called with callback(do_id) if specified. On failure, do_id is 0.
+        """
+
+        # Save the callback:
+        ctx = self.get_context()
+        self._callbacks[ctx] = callback
+
+        # Pack up/count valid fields.
+        field_packer = DCPacker()
+        field_count = 0
+        for k,v in fields.items():
+            field = dclass.get_field_by_name(k)
+            if not field:
+                self.notify.error('Creation request for %s object contains an invalid field named %s' % (
+                    dclass.get_name(), k))
+
+            field_packer.raw_pack_uint16(field.get_number())
+            field_packer.begin_pack(field)
+            field.pack_args(field_packer, v)
+            field_packer.end_pack()
+            field_count += 1
+
+        # Now generate and send the datagram:
+        dg = NetworkDatagram()
+        dg.add_header(database_id, channel_id, types.DBSERVER_CREATE_OBJECT)
+        dg.add_uint32(ctx)
+        dg.add_uint16(dclass.get_number())
+        dg.add_uint16(field_count)
+        dg.append_data(field_packer.get_string())
+        self._network.handle_send_connection_datagram(dg)
+
+    def handle_create_object_resp(self, di):
+        ctx = di.get_uint32()
+        do_id = di.get_uint32()
+
+        if ctx not in self._callbacks:
+            self.notify.warning('Received unexpected DBSERVER_CREATE_OBJECT_RESP (ctx %d, do_id %d)' % (
+                ctx, do_id))
+
+            return
+
+        if self._callbacks[ctx]:
+            self._callbacks[ctx](do_id)
+
+        del self._callbacks[ctx]
+
+    def query_object(self, channel_id, database_id, do_id, callback, dclass=None, field_names=()):
+        """
+        Query object `do_id` out of the database.
+        On success, the callback will be invoked as callback(dclass, fields)
+        where dclass is a DCClass instance and fields is a dict.
+        On failure, the callback will be invoked as callback(None, None).
+        """
+
+        # Save the callback:
+        ctx = self.get_context()
+        self._callbacks[ctx] = callback
+        self._dclasses[ctx] = dclass
+
+        # Generate and send the datagram:
+        dg = NetworkDatagram()
+
+        if not field_names:
+            dg.add_header(database_id, channel_id, types.DBSERVER_OBJECT_GET_ALL)
+        else:
+            # We need a dclass in order to convert the field names into field IDs:
+            assert dclass is not None
+
+            if len(field_names) > 1:
+                dg.add_header(database_id, channel_id, types.DBSERVER_OBJECT_GET_FIELDS)
+            else:
+                dg.add_header(database_id, channel_id, types.DBSERVER_OBJECT_GET_FIELD)
+
+        dg.add_uint32(ctx)
+        dg.add_uint32(do_id)
+        if len(field_names) > 1:
+            dg.add_uint16(len(field_names))
+
+        for field_name in field_names:
+            field = dclass.get_field_by_name(field_name)
+            if field is None:
+                self.notify.error('Bad field named %s in query for %s object' % (
+                    field_name, dclass.getName()))
+
+            dg.add_uint16(field.get_number())
+
+        self._network.handle_send_connection_datagram(dg)
+
+    def handle_query_object_resp(self, message_type, di):
+        ctx = di.get_uint32()
+        success = di.get_uint8()
+
+        if ctx not in self._callbacks:
+            self.notify.warning('Received unexpected %s (ctx %d)' % (
+                MsgId2Names[message_type], ctx))
+
+            return
+
+        try:
+            if not success:
+                if self._callbacks[ctx]:
+                    self._callbacks[ctx](None, None)
+
+                return
+
+            if message_type == types.DBSERVER_OBJECT_GET_ALL_RESP:
+                dclass_id = di.get_uint16()
+                dclass = self._network.dc_loader.dclasses_by_number.get(dclass_id)
+            else:
+                dclass = self._dclasses[ctx]
+
+            if not dclass:
+                self.notify.error('Received bad dclass %d in DBSERVER_OBJECT_GET_ALL_RESP' % (
+                    dclass_id))
+
+            if message_type == types.DBSERVER_OBJECT_GET_FIELD_RESP:
+                field_count = 1
+            else:
+                field_count = di.get_uint16()
+
+            field_packer = DCPacker()
+            field_packer.set_unpack_data(di.get_remaining_bytes())
+            fields = {}
+            for x in xrange(field_count):
+                field_id = field_packer.raw_unpack_uint16()
+                field = dclass.get_field_by_index(field_id)
+
+                if not field:
+                    self.notify.error('Received bad field %d in query for %s object' % (
+                        field_id, dclass.get_name()))
+
+                field_packer.begin_unpack(field)
+                fields[field.get_name()] = field.unpack_args(field_packer)
+                field_packer.end_unpack()
+
+            if self._callbacks[ctx]:
+                self._callbacks[ctx](dclass, fields)
+
+        finally:
+            del self._callbacks[ctx]
+            del self._dclasses[ctx]
+
+    def handle_datagram(self, message_type, di):
+        if message_type == types.DBSERVER_CREATE_OBJECT_RESP:
+            self.handle_create_object_resp(di)
+        elif message_type == types.DBSERVER_OBJECT_GET_ALL_RESP:
+            self.handle_query_object_resp(message_type, di)
 
 class NetworkDCLoader(object):
     notify = directNotify.newCategory('NetworkDCLoader')

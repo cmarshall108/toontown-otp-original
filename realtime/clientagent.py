@@ -15,12 +15,32 @@ from direct.fsm.FSM import FSM
 class ClientOperation(FSM):
     notify = directNotify.newCategory('ClientOperation')
 
-    def __init__(self, client, play_token, callback):
+    def __init__(self, manager, client, play_token, callback):
         FSM.__init__(self, self.__class__.__name__)
 
+        self._manager = manager
         self._client = client
         self._play_token = play_token
         self._callback = callback
+
+    @property
+    def manager(self):
+        return self._manager
+
+    @property
+    def client(self):
+        return self._client
+
+    @property
+    def play_token(self):
+        return self._play_token
+
+    @property
+    def callback(self):
+        return self._callback
+
+    def defaultFilter(self, request, *args):
+        return FSM.defaultFilter(self, request, *args)
 
     def enterOff(self):
         pass
@@ -31,8 +51,17 @@ class ClientOperation(FSM):
 class ClientOperationManager(object):
     notify = directNotify.newCategory('ClientOperationManager')
 
-    def __init__(self):
+    def __init__(self, network):
+        self._network = network
         self._channel2fsm = {}
+
+    @property
+    def network(self):
+        return self._network
+
+    @property
+    def channel2fsm(self):
+        return self._channel2fsm
 
     def has_fsm(self, channel):
         return channel in self._channel2fsm
@@ -57,16 +86,63 @@ class AccountFSM(ClientOperation):
     notify = directNotify.newCategory('AccountFSM')
 
     def enterLoad(self):
-        pass
+        if self.play_token not in self.manager.dbm:
+            self.demand('Create')
+            return
+
+        account_id = int(self.manager.dbm[self.play_token])
+
+        def account_queried(dclass, fields):
+            self.request('SetAccount', account_id)
+
+        self.manager.network.database_interface.query_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            account_id,
+            account_queried,
+            self.manager.network.dc_loader.dclasses_by_name['Account'])
 
     def exitLoad(self):
+        pass
+
+    def enterCreate(self):
+        fields = {
+            'ACCOUNT_AV_SET': ([0] * 6,),
+            'BIRTH_DATE': ('',),
+            'BLAST_NAME': (self.play_token,),
+            'CREATED': (time.ctime(),),
+            'FIRST_NAME': ('',),
+            'LAST_LOGIN': ('',),
+            'LAST_NAME': ('',),
+            'PLAYED_MINUTES': ('',),
+            'PLAYED_MINUTES_PERIOD': ('',),
+            'HOUSE_ID_SET': ([0] * 6,),
+            'ESTATE_ID': (0,)
+        }
+
+        def account_created(account_id):
+            self.manager.dbm[self._play_token] = str(account_id)
+            self.request('SetAccount', account_id)
+
+        self.manager.network.database_interface.create_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self.manager.network.dc_loader.dclasses_by_name['Account'],
+            fields=fields,
+            callback=account_created)
+
+    def exitCreate(self):
+        pass
+
+    def enterSetAccount(self, account_id):
+        self._callback()
+
+    def exitSetAccount(self):
         pass
 
 class ClientAccountManager(ClientOperationManager):
     notify = directNotify.newCategory('ClientAccountManager')
 
-    def __init__(self):
-        ClientOperationManager.__init__(self)
+    def __init__(self, *args, **kwargs):
+        ClientOperationManager.__init__(self, *args, **kwargs)
 
         self._dbm = semidbm.open(config.GetString('clientagent-dbm-filename', 'databases/database.dbm'),
             config.GetString('clientagent-dbm-mode', 'c'))
@@ -76,7 +152,8 @@ class ClientAccountManager(ClientOperationManager):
         return self._dbm
 
     def login(self, client, play_token, callback=None):
-        fsm = self.add_fsm(client.channel, AccountFSM(client, play_token, callback))
+        fsm = self.add_fsm(client.channel, AccountFSM(self, client,
+            play_token, callback))
 
         if not fsm:
             self.notify.warning('Failed to add account operation for channel: %d with playtoken: %s!' % (
@@ -119,7 +196,7 @@ class Client(io.NetworkHandler):
         io.NetworkHandler.setup(self)
 
     def handle_send_disconnect(self, code, reason):
-        self.notify.warning('Disconnecting channel: %d, reason: %s!' % (
+        self.notify.warning('Disconnecting channel: %d, reason: %s' % (
             self.channel, reason))
 
         datagram = io.NetworkDatagram()
@@ -168,8 +245,7 @@ class Client(io.NetworkHandler):
         if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
             self.handle_get_shard_list_resp(di)
         else:
-            self.notify.warning('Unknown internal datagram recieved with message type: %d!' % (
-                message_type))
+            self.network.database_interface.handle_datagram(message_type, di)
 
     def handle_login(self, di):
         play_token = di.get_string()
@@ -189,26 +265,24 @@ class Client(io.NetworkHandler):
 
             return
 
-        def login_done(errorCode=None, errorString=None):
+        def login_complete():
+            # the server says our login request was successful,
+            # it is now ok to mark the client as authenticated...
+            self._authenticated = True
+
             datagram = io.NetworkDatagram()
             datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
-
-            if code:
-                datagram.add_uint8(errorCode)
-                datagram.add_string(errorString)
-            else:
-                datagram.add_uint8(0)
-                datagram.add_string('All Ok')
-                datagram.add_string(play_token)
-                datagram.add_uint8(1)
-                datagram.add_uint32(int(time.time()))
-                datagram.add_uint32(int(time.clock()))
-                datagram.add_uint8(1)
-                datagram.add_int32(1000 * 60 * 60)
-
+            datagram.add_uint8(0)
+            datagram.add_string('All Ok')
+            datagram.add_string(play_token)
+            datagram.add_uint8(1)
+            datagram.add_uint32(int(time.time()))
+            datagram.add_uint32(int(time.clock()))
+            datagram.add_uint8(1)
+            datagram.add_int32(1000 * 60 * 60)
             self.handle_send_datagram(datagram)
 
-        self.network.account_manager.login(self, play_token, callback=login_done)
+        self.network.account_manager.login(self, play_token, callback=login_complete)
 
     def handle_get_shard_list(self):
         datagram = io.NetworkDatagram()
@@ -255,7 +329,8 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
 
         self._server_version = config.GetString('clientagent-version', 'no-version')
 
-        self._account_manager = ClientAccountManager()
+        self._database_interface = io.NetworkDatabaseInterface(self)
+        self._account_manager = ClientAccountManager(self)
 
     @property
     def channel_allocator(self):
@@ -264,6 +339,10 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
     @property
     def server_version(self):
         return self._server_version
+
+    @property
+    def database_interface(self):
+        return self._database_interface
 
     @property
     def account_manager(self):
