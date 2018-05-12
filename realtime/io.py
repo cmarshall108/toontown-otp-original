@@ -16,12 +16,30 @@ class NetworkError(RuntimeError):
     A network specific runtime error
     """
 
+class NetworkDatagram(NetDatagram):
+    """
+    A class that inherits from panda's C++ NetDatagram buffer.
+    This class adds useful methods and functions for talking
+    to the OTP's internal cluster participants...
+    """
+
+    def add_header(self, channel, sender, message_type):
+        self.add_uint8(1)
+        self.add_uint64(channel)
+        self.add_uint64(sender)
+        self.add_uint16(message_type)
+
+    def add_control_header(self, channel, message_type):
+        self.add_uint8(1)
+        self.add_uint64(types.CONTROL_MESSAGE)
+        self.add_uint16(message_type)
+        self.add_uint64(channel)
+
 class NetworkDCLoader(object):
     notify = directNotify.newCategory('NetworkDCLoader')
 
     def __init__(self):
         self._dc_file = DCFile()
-        self._dc_file.clear()
         self._dc_suffix = ""
 
         self._dclasses_by_name = {}
@@ -149,12 +167,8 @@ class NetworkConnector(NetworkManager):
         Registers our connections channel with the MessageDirector
         """
 
-        datagram = NetDatagram()
-        datagram.add_uint8(1)
-        datagram.add_uint64(types.CONTROL_MESSAGE)
-        datagram.add_uint16(types.CONTROL_SET_CHANNEL)
-        datagram.add_uint64(channel)
-
+        datagram = NetworkDatagram()
+        datagram.add_control_header(channel, types.CONTROL_SET_CHANNEL)
         self.handle_send_connection_datagram(datagram)
 
     def unregister_for_channel(self, channel):
@@ -162,12 +176,8 @@ class NetworkConnector(NetworkManager):
         Unregisters our connections channel from the MessageDirector
         """
 
-        datagram = NetDatagram()
-        datagram.add_uint8(1)
-        datagram.add_uint64(types.CONTROL_MESSAGE)
-        datagram.add_uint16(types.CONTROL_REMOVE_CHANNEL)
-        datagram.add_uint64(channel)
-
+        datagram = NetworkDatagram()
+        datagram.add_control_header(channel, types.CONTROL_REMOVE_CHANNEL)
         self.handle_send_connection_datagram(datagram)
 
     def __read_incoming(self, task):
@@ -176,7 +186,7 @@ class NetworkConnector(NetworkManager):
         """
 
         if self.__reader.data_available():
-            datagram = NetDatagram()
+            datagram = NetworkDatagram()
 
             if self.__reader.get_data(datagram):
                 self.__handle_data(datagram)
@@ -204,8 +214,9 @@ class NetworkConnector(NetworkManager):
 
         di = DatagramIterator(datagram)
 
-        self.handle_datagram(di.get_uint64(), di.get_uint64(),
-            di.get_uint16(), di)
+        if di.get_uint8() == 1:
+            self.handle_datagram(di.get_uint64(), di.get_uint64(),
+                di.get_uint16(), di)
 
     def handle_send_connection_datagram(self, datagram):
         """
@@ -273,12 +284,8 @@ class NetworkHandler(NetworkManager):
         Registers our connections channel with the MessageDirector
         """
 
-        datagram = NetDatagram()
-        datagram.add_uint8(1)
-        datagram.add_uint64(types.CONTROL_MESSAGE)
-        datagram.add_uint16(types.CONTROL_SET_CHANNEL)
-        datagram.add_uint64(channel)
-
+        datagram = NetworkDatagram()
+        datagram.add_control_header(channel, types.CONTROL_SET_CHANNEL)
         self.network.handle_send_connection_datagram(datagram)
 
     def unregister_for_channel(self, channel):
@@ -286,12 +293,8 @@ class NetworkHandler(NetworkManager):
         Unregisters our connections channel from the MessageDirector
         """
 
-        datagram = NetDatagram()
-        datagram.add_uint8(1)
-        datagram.add_uint64(types.CONTROL_MESSAGE)
-        datagram.add_uint16(types.CONTROL_REMOVE_CHANNEL)
-        datagram.add_uint64(channel)
-
+        datagram = NetworkDatagram()
+        datagram.add_control_header(channel, types.CONTROL_REMOVE_CHANNEL)
         self.network.handle_send_connection_datagram(datagram)
 
     def __update(self, task):
@@ -430,7 +433,7 @@ class NetworkListener(NetworkManager):
         """
 
         if self.__reader.data_available():
-            datagram = NetDatagram()
+            datagram = NetworkDatagram()
 
             if self.__reader.get_data(datagram):
                 self.__handle_data(datagram, datagram.get_connection())

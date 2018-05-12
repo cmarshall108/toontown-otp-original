@@ -11,7 +11,7 @@ except:
     import json as ujson
 import yaml
 
-from panda3d.core import NetDatagram, UniqueIdAllocator
+from panda3d.core import UniqueIdAllocator
 from panda3d.direct import DCPacker
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
@@ -233,8 +233,8 @@ class DatabaseYAMLBackend(DatabaseManager):
 class DatabaseServer(io.NetworkConnector):
     notify = directNotify.newCategory('DatabaseServer')
 
-    def __init__(self, dc_loader, address, port, channel):
-        io.NetworkConnector.__init__(self, dc_loader, address, port, channel)
+    def __init__(self, *args, **kwargs):
+        io.NetworkConnector.__init__(self, *args, **kwargs)
 
         self._backend = DatabaseJSONBackend()
 
