@@ -107,6 +107,9 @@ class DatabaseManager(object):
         self._directory = config.GetString('database-directory', 'databases/json')
         self._extension = config.GetString('database-extension', '.json')
 
+        if not os.path.exists(self._directory):
+            os.makedirs(self._directory)
+
         self._tracker = None
         self._tracker_filename = config.GetString('database-tracker', 'next')
 
