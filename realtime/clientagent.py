@@ -133,6 +133,17 @@ class AccountFSM(ClientOperation):
         pass
 
     def enterSetAccount(self, account_id):
+        # the server says our login request was successful,
+        # it is now ok to mark the client as authenticated...
+        self._client.authenticated = True
+
+        # now since we've been authenticated and our account is setup,
+        # let's switch our channel so that we receive updates
+        # as the account_id instead of our default clientagent assigned channel...
+        self._client.unregister_for_channel(self._client.channel)
+        self._client.channel = account_id
+        self._client.register_for_channel(self._client.channel)
+
         self._callback()
 
     def exitSetAccount(self):
@@ -265,24 +276,21 @@ class Client(io.NetworkHandler):
 
             return
 
-        def login_complete():
-            # the server says our login request was successful,
-            # it is now ok to mark the client as authenticated...
-            self._authenticated = True
+        self.network.account_manager.login(self, play_token, callback=lambda: \
+            self.__handle_login_resp(play_token))
 
-            datagram = io.NetworkDatagram()
-            datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
-            datagram.add_uint8(0)
-            datagram.add_string('All Ok')
-            datagram.add_string(play_token)
-            datagram.add_uint8(1)
-            datagram.add_uint32(int(time.time()))
-            datagram.add_uint32(int(time.clock()))
-            datagram.add_uint8(1)
-            datagram.add_int32(1000 * 60 * 60)
-            self.handle_send_datagram(datagram)
-
-        self.network.account_manager.login(self, play_token, callback=login_complete)
+    def __handle_login_resp(self, play_token):
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
+        datagram.add_uint8(0)
+        datagram.add_string('All Ok')
+        datagram.add_string(play_token)
+        datagram.add_uint8(1)
+        datagram.add_uint32(int(time.time()))
+        datagram.add_uint32(int(time.clock()))
+        datagram.add_uint8(1)
+        datagram.add_int32(1000 * 60 * 60)
+        self.handle_send_datagram(datagram)
 
     def handle_get_shard_list(self):
         datagram = io.NetworkDatagram()
