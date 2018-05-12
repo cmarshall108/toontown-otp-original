@@ -233,7 +233,7 @@ class DatabaseServer(io.NetworkConnector):
     def __init__(self, dc_loader, address, port, channel):
         io.NetworkConnector.__init__(self, dc_loader, address, port, channel)
 
-        self._backend = DatabaseYAMLBackend()
+        self._backend = DatabaseJSONBackend()
 
     @property
     def backend(self):

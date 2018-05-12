@@ -66,6 +66,12 @@ class Client(io.NetworkHandler):
         hash_val = di.get_uint32()
         token_type = di.get_int32()
 
+        if self.network.server_version != server_version:
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_BAD_VERSION, "Invalid server version: %s, expected: %s!" % (
+                server_version, self.network.server_version))
+
+            return
+
         datagram = NetDatagram()
         datagram.add_uint16(types.CLIENT_LOGIN_2_RESP)
         datagram.add_uint8(0)
@@ -118,8 +124,18 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
         io.NetworkListener.__init__(self, address, port, Client)
         io.NetworkConnector.__init__(self, dc_loader, connect_address, connect_port, channel)
 
-        self.channel_allocator = UniqueIdAllocator(config.GetInt('clientagent-min-channels', 1000000000),
+        self._channel_allocator = UniqueIdAllocator(config.GetInt('clientagent-min-channels', 1000000000),
             config.GetInt('clientagent-max-channels', 1009999999))
+
+        self._server_version = config.GetString('server-version', 'no-version')
+
+    @property
+    def channel_allocator(self):
+        return self._channel_allocator
+
+    @property
+    def server_version(self):
+        return self._server_version
 
     def setup(self):
         io.NetworkListener.setup(self)

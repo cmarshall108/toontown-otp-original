@@ -7,3 +7,6 @@ database-directory databases/yaml
 database-extension .yaml
 database-max-channels 399999999
 database-min-channels 100000000
+
+# Server:
+server-version sv1.0.6.9
