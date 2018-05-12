@@ -64,9 +64,6 @@ class AccountFSM(ClientOperation):
 class ClientAccountManager(ClientOperationManager):
     notify = directNotify.newCategory('ClientAccountManager')
 
-    def __init__(self):
-        self._channel2fsm = {}
-
     def login(self, client, play_token):
         fsm = self.add_fsm(client.channel, AccountFSM(client, play_token))
 
