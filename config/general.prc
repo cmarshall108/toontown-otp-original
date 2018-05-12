@@ -1,9 +1,9 @@
 # MessageDirector:
-messagedirector-address 0.0.0.0
+messagedirector-address 127.0.0.1
 messagedirector-port 7100
 
 # ClientAgent:
-clientagent-address 0.0.0.0
+clientagent-address 127.0.0.1
 clientagent-port 6667
 clientagent-channel 1000
 clientagent-max-channels 1000001000
