@@ -144,7 +144,13 @@ class AccountFSM(ClientOperation):
         self._client.channel = account_id
         self._client.register_for_channel(self._client.channel)
 
+        # call the callback our client object has specified,
+        # this will notify the game client of the successful login...
         self._callback()
+
+        # we're all done.
+        self.ignoreAll()
+        self.demand('Off')
 
     def exitSetAccount(self):
         pass
@@ -192,6 +198,7 @@ class Client(io.NetworkHandler):
     def __init__(self, *args, **kwargs):
         io.NetworkHandler.__init__(self, *args, **kwargs)
 
+        self.channel = self.network.channel_allocator.allocate()
         self._authenticated = False
 
     @property
@@ -201,10 +208,6 @@ class Client(io.NetworkHandler):
     @authenticated.setter
     def authenticated(self, authenticated):
         self._authenticated = authenticated
-
-    def setup(self):
-        self.channel = self.network.channel_allocator.allocate()
-        io.NetworkHandler.setup(self)
 
     def handle_send_disconnect(self, code, reason):
         self.notify.warning('Disconnecting channel: %d, reason: %s' % (
@@ -232,7 +235,7 @@ class Client(io.NetworkHandler):
             self.handle_disconnect()
         else:
             if not self._authenticated:
-                self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, "Cannot send datagram with message type: %d, channel: %d not yet authenticated!" % (
+                self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, 'Cannot send datagram with message type: %d, channel: %d not yet authenticated!' % (
                     message_type, self.channel))
 
                 return
@@ -249,8 +252,10 @@ class Client(io.NetworkHandler):
         elif message_type == types.CLIENT_SET_AVATAR:
             self.handle_set_avatar(di)
         else:
-            self.notify.warning('Unknown datagram recieved with message type: %d!' % (
-                message_type))
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, 'Unknown datagram: %d from channel: %d!' % (
+                message_type, self.channel))
+
+            return
 
     def handle_internal_datagram(self, message_type, sender, di):
         if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
@@ -265,13 +270,13 @@ class Client(io.NetworkHandler):
         token_type = di.get_int32()
 
         if server_version != self.network.server_version:
-            self.handle_send_disconnect(types.CLIENT_DISCONNECT_BAD_VERSION, "Invalid server version: %s, expected: %s!" % (
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_BAD_VERSION, 'Invalid server version: %s, expected: %s!' % (
                 server_version, self.network.server_version))
 
             return
 
         if token_type != types.CLIENT_LOGIN_2_PLAY_TOKEN:
-            self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_PLAY_TOKEN_TYPE, "Invalid play token type: %d!" % (
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_PLAY_TOKEN_TYPE, 'Invalid play token type: %d!' % (
                 token_type))
 
             return

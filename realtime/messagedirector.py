@@ -124,12 +124,6 @@ class MessageDirector(io.NetworkListener):
 
             return
 
-        if not self._interface.has_channel(sender):
-            self.notify.warning('Cannot route message to channel: %d, sender %d is not a participant!' % (
-                channel, sender))
-
-            return
-
         participant = self._interface.get_participant(channel)
 
         if not participant:
