@@ -40,7 +40,6 @@ class NetworkDCLoader(object):
 
     def __init__(self):
         self._dc_file = DCFile()
-        self._dc_file.clear()
         self._dc_suffix = ""
 
         self._dclasses_by_name = {}

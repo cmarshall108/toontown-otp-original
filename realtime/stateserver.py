@@ -40,8 +40,8 @@ class ShardManager(object):
 class StateServer(io.NetworkConnector):
     notify = directNotify.newCategory('StateServer')
 
-    def __init__(self, dc_loader, address, port, channel):
-        io.NetworkConnector.__init__(self, dc_loader, address, port, channel)
+    def __init__(self, *args, **kwargs):
+        io.NetworkConnector.__init__(self, *args, **kwargs)
 
         self.shard_manager = ShardManager()
 

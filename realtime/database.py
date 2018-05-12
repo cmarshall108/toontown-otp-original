@@ -230,8 +230,8 @@ class DatabaseYAMLBackend(DatabaseManager):
 class DatabaseServer(io.NetworkConnector):
     notify = directNotify.newCategory('DatabaseServer')
 
-    def __init__(self, dc_loader, address, port, channel):
-        io.NetworkConnector.__init__(self, dc_loader, address, port, channel)
+    def __init__(self, *args, **kwargs):
+        io.NetworkConnector.__init__(self, *args, **kwargs)
 
         self._backend = DatabaseJSONBackend()
 

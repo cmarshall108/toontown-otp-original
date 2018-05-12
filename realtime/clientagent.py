@@ -64,6 +64,9 @@ class AccountFSM(ClientOperation):
 class ClientAccountManager(ClientOperationManager):
     notify = directNotify.newCategory('ClientAccountManager')
 
+    def __init__(self):
+        ClientOperationManager.__init__(self)
+
     def login(self, client, play_token):
         fsm = self.add_fsm(client.channel, AccountFSM(client, play_token))
 
@@ -90,8 +93,8 @@ class ClientAccountManager(ClientOperationManager):
 class Client(io.NetworkHandler):
     notify = directNotify.newCategory('Client')
 
-    def __init__(self, network, rendezvous, address, connection):
-        io.NetworkHandler.__init__(self, network, rendezvous, address, connection)
+    def __init__(self, *args, **kwargs):
+        io.NetworkHandler.__init__(self, *args, **kwargs)
 
     def setup(self):
         self.channel = self.network.channel_allocator.allocate()
