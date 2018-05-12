@@ -325,7 +325,7 @@ class DatabaseServer(io.NetworkConnector):
 
         if not dc_class:
             self.notify.warning('Failed to query object: %d context: %d, unknown dclass: %s!' % (
-                dc_id, context, dc_name))
+                do_id, context, dc_name))
 
             return
 
@@ -333,7 +333,7 @@ class DatabaseServer(io.NetworkConnector):
 
         if not fields:
             self.notify.warning('Failed to query object: %d context %d, invalid fields!' % (
-                dc_id, context))
+                do_id, context))
 
             return
 
