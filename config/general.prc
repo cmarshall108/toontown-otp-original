@@ -17,5 +17,5 @@ stateserver-channel 1001
 database-channel 1002
 database-directory databases/json
 database-extension .json
-database-max-channels 399999999
+database-max-channels 100999999
 database-min-channels 100000000

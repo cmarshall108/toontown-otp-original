@@ -108,7 +108,7 @@ class DatabaseManager(object):
         self._file_handler = file_handler
 
         self._min_id = config.GetInt('database-min-channels', 100000000)
-        self._max_id = config.GetInt('database-max-channels', 399999999)
+        self._max_id = config.GetInt('database-max-channels', 100999999)
 
         self._directory = config.GetString('database-directory', 'databases/json')
         self._extension = config.GetString('database-extension', '.json')
