@@ -246,7 +246,7 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
         self._channel_allocator = UniqueIdAllocator(config.GetInt('clientagent-min-channels', 1000000000),
             config.GetInt('clientagent-max-channels', 1009999999))
 
-        self._server_version = config.GetString('server-version', 'no-version')
+        self._server_version = config.GetString('clientagent-version', 'no-version')
 
         self._account_manager = ClientAccountManager()
 

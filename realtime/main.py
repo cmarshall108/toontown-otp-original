@@ -14,6 +14,7 @@ if os.path.exists('config/general.prc'):
 
 from panda3d.direct import get_config_showbase
 from direct.task.TaskManagerGlobal import taskMgr as task_mgr
+from direct.directnotify.DirectNotifyGlobal import directNotify
 
 __builtin__.config = get_config_showbase()
 __builtin__.task_mgr = task_mgr
@@ -21,33 +22,48 @@ __builtin__.task_mgr = task_mgr
 from realtime import io, types, clientagent, messagedirector, \
     stateserver, database
 
+notify = directNotify.newCategory('Main')
+notify.setInfo(True)
+
+def setup_component(cls, *args, **kwargs):
+    notify.info('Starting component: %s...' % (
+        cls.__name__))
+
+    component = cls(*args, **kwargs)
+    component.setup()
+
+def shutdown_component(cls):
+    notify.info('Stopping component: %s...' % (
+        cls.__name__))
+
+    cls.shutdown()
+
 def main():
     dc_loader = io.NetworkDCLoader()
     dc_loader.read_dc_files(['config/dclass/toon.dc'])
 
-    print "Starting Message Director!"
-    message_director = messagedirector.MessageDirector('0.0.0.0', 7100)
-    message_director.setup()
+    message_director_address = config.GetString('messagedirector-address', '0.0.0.0')
+    message_director_port = config.GetInt('messagedirector-port', 7100)
 
-    print "Starting Client Agent!"
-    client_agent = clientagent.ClientAgent(dc_loader, '0.0.0.0', 6667,
-        '127.0.0.1', 7100, types.CLIENTAGENT_CHANNEL)
+    client_agent_address = config.GetString('clientagent-address', '0.0.0.0')
+    client_agent_port = config.GetInt('clientagent-port', 6667)
 
-    client_agent.setup()
+    client_agent_channel = config.GetInt('clientagent-channel', types.CLIENTAGENT_CHANNEL)
+    state_server_channel = config.GetInt('stateserver-channel', types.STATESERVER_CHANNEL)
+    database_channel = config.GetInt('database-channel', types.DATABASE_CHANNEL)
 
-    print "Starting State Server!"
-    state_server = stateserver.StateServer(dc_loader, '127.0.0.1', 7100,
-        types.STATESERVER_CHANNEL)
+    message_director = setup_component(messagedirector.MessageDirector, message_director_address,
+        message_director_port)
 
-    state_server.setup()
+    client_agent = setup_component(clientagent.ClientAgent, dc_loader, client_agent_address,
+        client_agent_port, message_director_address, message_director_port,
+        client_agent_channel)
 
-    print "Starting Database Server!"
-    database_server = database.DatabaseServer(dc_loader, '127.0.0.1', 7100,
-        types.DATABASE_CHANNEL)
+    state_server = setup_component(stateserver.StateServer, dc_loader, message_director_address,
+        message_director_port, state_server_channel)
 
-    database_server.setup()
-    
-    print "Startup complete!"
+    database_server = setup_component(database.DatabaseServer, dc_loader, message_director_address,
+        message_director_port, database_channel)
 
 if __name__ == '__main__':
     main()
