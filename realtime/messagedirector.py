@@ -4,6 +4,8 @@
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
+import time
+
 from panda3d.core import DatagramIterator, Datagram
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
@@ -38,7 +40,8 @@ class Participant(io.NetworkHandler):
             elif message_type == types.CONTROL_CLEAR_POST_REMOVE:
                 self.network.interface.remove_post_remove(self)
         else:
-            self.network.handle_route_message(channel, di.get_uint64(), di)
+            self.network.message_interface.add_message(channel,
+                di.get_uint64(), di)
 
     def handle_post_removes(self):
         for datagram in self.network.interface.get_post_removes(self):
@@ -105,6 +108,146 @@ class ParticipantInterface(object):
 
         return self._post_removes.pop(participant.channel)
 
+class Message(object):
+
+    def __init__(self, timestamp, channel, sender, message_type, datagram):
+        self._timestamp = timestamp
+        self._channel = channel
+        self._sender = sender
+        self._message_type = message_type
+        self._datagram = datagram
+
+    @property
+    def timestamp(self):
+        return self._timestamp
+
+    @timestamp.setter
+    def timestamp(self, timestamp):
+        self._timestamp = timestamp
+
+    @property
+    def channel(self):
+        return self._channel
+
+    @channel.setter
+    def channel(self, channel):
+        self._channel = channel
+
+    @property
+    def sender(self):
+        return self._sender
+
+    @sender.setter
+    def sender(self, sender):
+        self._sender = sender
+
+    @property
+    def message_type(self):
+        return self._message_type
+
+    @message_type.setter
+    def message_type(self, message_type):
+        self._message_type = message_type
+
+    @property
+    def datagram(self):
+        return self._datagram
+
+    @datagram.setter
+    def datagram(self, datagram):
+        self._datagram = datagram
+
+    def setup(self):
+        pass
+
+    def shutdown(self):
+        self._timestamp = None
+        self._channel = None
+        self._sender = None
+        self._message_type = None
+        self._datagram = None
+
+class MessageInterface(object):
+
+    def __init__(self, network):
+        self._network = network
+
+        self._messages = []
+        self._message_timeout = config.GetFloat('messagedirector-message-timeout', 5.0)
+
+        self.__send_task = None
+
+    @property
+    def network(self):
+        return self._network
+
+    @property
+    def messages(self):
+        return self._messages
+
+    @property
+    def message_timeout(self):
+        return self._message_timeout
+
+    @message_timeout.setter
+    def message_timeout(self, message_timeout):
+        self._message_timeout = message_timeout
+
+    def get_timestamp(self):
+        return round(time.time(), 2)
+
+    def has_message(self, message):
+        return message in self._messages
+
+    def add_message(self, channel, sender, di):
+        message = Message(self.get_timestamp(), channel, sender, di.get_uint16(),
+            io.NetworkDatagram(Datagram(di.get_remaining_bytes())))
+
+        self._messages.append(message)
+        message.setup()
+
+    def remove_message(self, message):
+        if not self.has_message(message):
+            return
+
+        message.shutdown()
+        self._messages.remove(message)
+
+    def setup(self):
+        self.__send_task = task_mgr.add(self.__send_messages, self._network.get_unique_name(
+            'send-messages'))
+
+    def __send_messages(self, task):
+        for message in self._messages:
+
+            if self.get_timestamp() - message.timestamp > self._message_timeout:
+                self.remove_message(message)
+                continue
+
+            if not self._network.interface.has_channel(message.sender):
+                continue
+
+            if not self._network.interface.has_channel(message.channel):
+                continue
+
+            participant = self._network.interface.get_participant(message.channel)
+
+            if participant:
+                datagram = io.NetworkDatagram()
+                datagram.add_header(message.channel, message.sender, message.message_type)
+                datagram.append_data(message.datagram.get_message())
+                participant.handle_send_datagram(datagram)
+
+            self.remove_message(message)
+
+        return task.cont
+
+    def shutdown(self):
+        if self.__send_task:
+            task_mgr.remove(self.__send_task)
+
+        self.__send_task = None
+
 class MessageDirector(io.NetworkListener):
     notify = directNotify.newCategory('MessageDirector')
 
@@ -112,24 +255,22 @@ class MessageDirector(io.NetworkListener):
         io.NetworkListener.__init__(self, address, port, Participant)
 
         self._interface = ParticipantInterface()
+        self._message_interface = MessageInterface(self)
 
     @property
     def interface(self):
         return self._interface
 
-    def handle_route_message(self, channel, sender, di):
-        if not self._interface.has_channel(channel):
-            self.notify.warning('Cannot route message to channel: %d, channel is not a participant!' % (
-                channel))
+    @property
+    def message_interface(self):
+        return self._message_interface
 
-            return
+    def setup(self):
+        self._message_interface.setup()
 
-        participant = self._interface.get_participant(channel)
+        io.NetworkListener.setup(self)
 
-        if not participant:
-            return
+    def shutdown(self):
+        self._message_interface.shutdown()
 
-        datagram = io.NetworkDatagram()
-        datagram.add_header(channel, sender, di.get_uint16())
-        datagram.append_data(di.get_remaining_bytes())
-        participant.handle_send_datagram(datagram)
+        io.NetworkListener.shutdown(self)
