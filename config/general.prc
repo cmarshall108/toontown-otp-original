@@ -6,7 +6,7 @@ messagedirector-port 7100
 clientagent-address 0.0.0.0
 clientagent-port 6667
 clientagent-channel 1000
-clientagent-max-channels 1009999999
+clientagent-max-channels 1000001000
 clientagent-min-channels 1000000000
 clientagent-version sv1.0.6.9
 
