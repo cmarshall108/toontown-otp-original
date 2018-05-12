@@ -80,7 +80,7 @@ class Client(io.NetworkHandler):
 
     def handle_get_shard_list(self):
         datagram = NetDatagram()
-        datagram.add_uint8(1)
+        datagram.add_uint8(0)
         datagram.add_uint64(types.STATESERVER_CHANNEL)
         datagram.add_uint64(self.channel)
         datagram.add_uint16(types.STATESERVER_GET_SHARD_ALL)
