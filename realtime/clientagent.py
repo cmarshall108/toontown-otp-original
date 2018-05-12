@@ -322,7 +322,9 @@ class Client(io.NetworkHandler):
         if self.network.account_manager.has_fsm(self.channel):
             self.network.account_manager.abandon_login(self)
 
-        self.network.channel_allocator.free(self.channel)
+        if not self._authenticated:
+            self.network.channel_allocator.free(self.channel)
+
         io.NetworkHandler.shutdown(self)
 
 class ClientAgent(io.NetworkListener, io.NetworkConnector):
