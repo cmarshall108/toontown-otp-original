@@ -264,10 +264,13 @@ class Client(io.NetworkHandler):
             self.network.database_interface.handle_datagram(message_type, di)
 
     def handle_login(self, di):
-        play_token = di.get_string()
-        server_version = di.get_string()
-        hash_val = di.get_uint32()
-        token_type = di.get_int32()
+        try:
+            play_token = di.get_string()
+            server_version = di.get_string()
+            hash_val = di.get_uint32()
+            token_type = di.get_int32()
+        except:
+            return self.handle_disconnect()
 
         if server_version != self.network.server_version:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_BAD_VERSION, 'Invalid server version: %s, expected: %s!' % (
@@ -316,12 +319,18 @@ class Client(io.NetworkHandler):
         self.handle_send_datagram(datagram)
 
     def handle_create_avatar(self, di):
-        echo_context = di.get_uint16()
-        dna_string = di.get_string()
-        index = di.get_uint8()
+        try:
+            echo_context = di.get_uint16()
+            dna_string = di.get_string()
+            index = di.get_uint8()
+        except:
+            return self.handle_disconnect()
 
     def handle_set_avatar(self, di):
-        avatar_id = di.get_uint32()
+        try:
+            avatar_id = di.get_uint32()
+        except:
+            return self.handle_disconnect()
 
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):
