@@ -404,6 +404,8 @@ class Client(io.NetworkHandler):
             self.handle_set_avatar(di)
         elif message_type == types.CLIENT_SET_WISHNAME:
             self.handle_set_wishname(di)
+        elif message_type == types.CLIENT_SET_NAME_PATTERN:
+            self.handle_set_name_pattern(di)
         else:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, 'Unknown datagram: %d from channel: %d!' % (
                 message_type, self.channel))
@@ -519,6 +521,29 @@ class Client(io.NetworkHandler):
             datagram.add_string('')
             datagram.add_string(wish_name)
             datagram.add_string('')
+            self.handle_send_datagram(datagram)
+        except:
+            return self.handle_disconnect()
+            
+    def handle_set_name_pattern(self, di):
+        try:
+            name_indices = []
+            name_flags = []
+            avatar_id = di.get_uint32()
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            
+            #TODO: Actually parse and set the name pattern name.
+            datagram = io.NetworkDatagram()
+            datagram.add_uint16(types.CLIENT_SET_NAME_PATTERN_ANSWER)
+            datagram.add_uint32(avatar_id)
+            datagram.add_uint8(0)
             self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
