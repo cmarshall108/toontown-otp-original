@@ -28,3 +28,6 @@ database-directory databases/json
 database-extension .json
 database-max-channels 100999999
 database-min-channels 100000000
+
+# DClass:
+dc-multiple-inheritance #f
