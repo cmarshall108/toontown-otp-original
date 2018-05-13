@@ -1,6 +1,7 @@
 """
  * Copyright (C) Caleb Marshall - All Rights Reserved
  * Written by Caleb Marshall <anythingtechpro@gmail.com>, August 17th, 2017
+ * Contributed to by Prince Frizzy <theclashingfritz@gmail.com>, May 12th, 2018
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
@@ -460,6 +461,10 @@ class Client(io.NetworkHandler):
             self.handle_create_avatar(di)
         elif message_type == types.CLIENT_SET_AVATAR:
             self.handle_set_avatar(di)
+        elif message_type == types.CLIENT_SET_WISHNAME:
+            self.handle_set_wishname(di)
+        elif message_type == types.CLIENT_SET_NAME_PATTERN:
+            self.handle_set_name_pattern(di)
         else:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, 'Unknown datagram: %d from channel: %d!' % (
                 message_type, self.channel))
@@ -547,6 +552,13 @@ class Client(io.NetworkHandler):
             echo_context = di.get_uint16()
             dna_string = di.get_string()
             index = di.get_uint8()
+            
+            datagram = io.NetworkDatagram()
+            datagram.add_uint16(types.CLIENT_CREATE_AVATAR_RESP)
+            datagram.add_uint16(echo_context)
+            datagram.add_uint8(0)
+            datagram.add_uint32(100000001)
+            self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
 
@@ -561,7 +573,46 @@ class Client(io.NetworkHandler):
             avatar_id = di.get_uint32()
         except:
             return self.handle_disconnect()
-
+            
+    def handle_set_wishname(self, di):
+        try:
+            avatar_id = di.get_uint32()
+            wish_name = di.get_string()
+            
+            datagram = io.NetworkDatagram()
+            datagram.add_uint16(types.CLIENT_SET_WISHNAME_RESP)
+            datagram.add_uint32(avatar_id)
+            datagram.add_uint16(0)
+            datagram.add_string('')
+            datagram.add_string(wish_name)
+            datagram.add_string('')
+            self.handle_send_datagram(datagram)
+        except:
+            return self.handle_disconnect()
+            
+    def handle_set_name_pattern(self, di):
+        try:
+            name_indices = []
+            name_flags = []
+            avatar_id = di.get_uint32()
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            name_indices.append(di.get_uint16())
+            name_flags.append(di.get_uint16())
+            
+            #TODO: Actually parse and set the name pattern name.
+            datagram = io.NetworkDatagram()
+            datagram.add_uint16(types.CLIENT_SET_NAME_PATTERN_ANSWER)
+            datagram.add_uint32(avatar_id)
+            datagram.add_uint8(0)
+            self.handle_send_datagram(datagram)
+        except:
+            return self.handle_disconnect()
+            
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):
             self.network.account_manager.stop_operation(self)
