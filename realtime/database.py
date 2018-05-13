@@ -256,7 +256,7 @@ class DatabaseServer(io.NetworkConnector):
     def __init__(self, *args, **kwargs):
         io.NetworkConnector.__init__(self, *args, **kwargs)
 
-        self._backend = DatabaseYAMLBackend()
+        self._backend = DatabaseJSONBackend()
 
     @property
     def backend(self):
@@ -276,6 +276,8 @@ class DatabaseServer(io.NetworkConnector):
             self.handle_create_object(sender, di)
         elif message_type == types.DBSERVER_OBJECT_GET_ALL:
             self.handle_object_get_all(sender, di)
+        elif message_type == types.DBSERVER_OBJECT_SET_FIELD:
+            self.handle_object_set_field(sender, di)
 
     def handle_create_object(self, sender, di):
         context = di.get_uint32()
@@ -303,7 +305,7 @@ class DatabaseServer(io.NetworkConnector):
 
             if not field:
                 self.notify.error('Failed to unpack field: %d dclass: %s, invalid field!' % (
-                    field_id, dclass.get_name()))
+                    field_id, dc_class.get_name()))
 
             field_packer.begin_unpack(field)
             field_args = field.unpack_args(field_packer)
@@ -311,9 +313,45 @@ class DatabaseServer(io.NetworkConnector):
 
             if not field_args:
                 self.notify.error('Failed to unpack field args for field: %d dclass: %s, invalid result!' % (
-                    field.get_name(), dclass.get_name()))
+                    field.get_name(), dc_class.get_name()))
 
-            fields[field.get_name()] = field_args[0]
+            if len(field_args) == 1:
+                fields[field.get_name()] = field_args[0]
+            else:
+                fields[field.get_name()] = list(field_args)
+
+        for index in xrange(dc_class.get_num_fields()):
+            field_packer = DCPacker()
+            field = dc_class.get_field_by_index(index)
+
+            if not field:
+                field = dc_class.get_inherited_field(index)
+
+            if not field:
+                continue
+
+            if field.get_name() in fields:
+                continue
+
+            if not field.is_db():
+                continue
+
+            if not field.has_default_value():
+                continue
+
+            field_packer.set_unpack_data(field.get_default_value())
+            field_packer.begin_unpack(field)
+            field_args = field.unpack_args(field_packer)
+            field_packer.end_unpack()
+
+            if not field_args:
+                self.notify.error('Failed to unpack field args for field: %d dclass: %s, invalid result!' % (
+                    field.get_name(), dc_class.get_name()))
+
+            if len(field_args) == 1:
+                fields[field.get_name()] = field_args[0]
+            else:
+                fields[field.get_name()] = list(field_args)
 
         file_object.set_value('fields', fields)
 
@@ -332,7 +370,7 @@ class DatabaseServer(io.NetworkConnector):
         file_object = self._backend.open_file(self._backend.get_filename(do_id))
 
         if not file_object:
-            self.notify.warning('Cannot get fields for object: %d context: %d, unknown object!' % (
+            self.notify.warning('Failed to get fields for object: %d context: %d, unknown object!' % (
                 do_id, context))
 
             return
@@ -372,7 +410,13 @@ class DatabaseServer(io.NetworkConnector):
 
             field_packer.raw_pack_uint16(field.get_number())
             field_packer.begin_pack(field)
-            field.pack_args(field_packer, (value,))
+
+            if type(value) == list:
+                field_packer.push()
+                field_packer.pack_object(value)
+            else:
+                field.pack_args(field_packer, (value,))
+
             field_packer.end_pack()
             field_count += 1
 
@@ -382,6 +426,54 @@ class DatabaseServer(io.NetworkConnector):
         datagram.add_uint16(field_count)
         datagram.append_data(field_packer.get_string())
         self.handle_send_connection_datagram(datagram)
+
+    def handle_object_set_field(self, sender, di):
+        do_id = di.get_uint32()
+        file_object = self._backend.open_file(self._backend.get_filename(do_id))
+
+        if not file_object:
+            self.notify.warning('Failed to set fields for object: %d, unknown object!' % (
+                do_id))
+
+            return
+
+        dc_name = file_object.get_value('dclass')
+        dc_class = self.dc_loader.dclasses_by_name.get(dc_name)
+
+        if not dc_class:
+            self.notify.warning('Failed to set fields for object: %d, unknown dclass: %s!' % (
+                do_id, dc_name))
+
+            return
+
+        fields = file_object.get_value('fields')
+
+        if not fields:
+            self.notify.warning('Failed to set fields for object: %d, invalid fields!' % (
+                do_id))
+
+            return
+
+        field_packer = DCPacker()
+        field_packer.set_unpack_data(di.get_remaining_bytes())
+        field_id = field_packer.raw_unpack_uint16()
+        field = dc_class.get_field_by_index(field_id)
+
+        if not field:
+            self.notify.error('Failed to unpack field: %d dclass: %s, invalid field!' % (
+                field_id, dc_class.get_name()))
+
+        field_packer.begin_unpack(field)
+        field_args = field.unpack_args(field_packer)
+        field_packer.end_unpack()
+
+        if not field_args:
+            self.notify.error('Failed to unpack field args for field: %d dclass: %s, invalid result!' % (
+                field.get_name(), dc_class.get_name()))
+
+        fields[field.get_name()] = field_args[0]
+
+        self._backend.close_file(file_object)
 
     def shutdown(self):
         self._backend.shutdown()

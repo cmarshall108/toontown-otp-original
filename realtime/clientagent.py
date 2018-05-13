@@ -150,7 +150,8 @@ class LoadAccountFSM(ClientOperation):
         }
 
         self.manager.network.database_interface.create_object(self.client.channel, types.DATABASE_CHANNEL,
-            self.manager.network.dc_loader.dclasses_by_name['Account'], fields=fields, callback=self.__account_created)
+            self.manager.network.dc_loader.dclasses_by_name['Account'], fields=fields,
+            callback=self.__account_created)
 
     def __account_created(self, account_id):
         if not account_id:
@@ -242,11 +243,14 @@ class RetrieveAvatarsFSM(ClientOperation):
         ClientOperation.__init__(self, manager, client, callback)
 
         self._account_id = account_id
-        self._avatar_data = []
+        self._pending_avatars = []
+        self._avatar_fields = {}
 
     def enterLoad(self):
-        self.manager.network.database_interface.query_object(self.client.channel, types.DATABASE_CHANNEL,
-            self._account_id, lambda dclass, fields: self.__account_loaded(dclass, fields),
+        self.manager.network.database_interface.query_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._account_id,
+            lambda dclass, fields: self.__account_loaded(dclass, fields),
             self.manager.network.dc_loader.dclasses_by_name['Account'])
 
     def exitLoad(self):
@@ -260,25 +264,33 @@ class RetrieveAvatarsFSM(ClientOperation):
             if not avatar_id:
                 continue
 
-            self.manager.network.database_interface.query_object(self.client.channel, types.DATABASE_CHANNEL,
-                self._avatar_id, lambda dclass, fields: self.__avatar_loaded(avatar_id, dclass, fields),
-                self.manager.network.dc_loader.dclasses_by_name['Account'])
+            self._pending_avatars.append(avatar_id)
 
-        # no avatars found...
-        if not self._avatar_data:
-            self.request('SetAvatars')
+            def response(dclass, fields, avatar_id=avatar_id):
+                self._avatar_fields[avatar_id] = fields
+                self._pending_avatars.remove(avatar_id)
+                if not self._pending_avatars:
+                    self.request('SetAvatars')
 
-    def __avatar_loaded(self, avatar_id, dclass, fields):
-        avatar_data = ClientAvatarData(avatar_id, ['', '', '', ''], fields['setDNAString'][0],
-            len(self._avatar_data), 0)
+            self.manager.network.database_interface.query_object(self.client.channel,
+                types.DATABASE_CHANNEL,
+                avatar_id,
+                response,
+                self.manager.network.dc_loader.dclasses_by_name['DistributedToon'])
 
-        self._avatar_data.append(avatar_data)
-
-        if len(self._avatar_data) >= 6:
+        if not self._pending_avatars:
             self.request('SetAvatars')
 
     def enterSetAvatars(self):
-        self._callback(self._avatar_data)
+        avatar_list = []
+
+        for avatar_id, fields in self._avatar_fields.items():
+            avatar_data = ClientAvatarData(avatar_id, ['', '', '', ''], fields['setDNAString'][0],
+                fields['setPosIndex'][0], 0)
+
+            avatar_list.append(avatar_data)
+
+        self._callback(avatar_list)
 
         # we're all done.
         self.ignoreAll()
@@ -290,8 +302,45 @@ class RetrieveAvatarsFSM(ClientOperation):
 class CreateAvatarFSM(ClientOperation):
     notify = directNotify.newCategory('CreateAvatarFSM')
 
+    def __init__(self, manager, client, callback, account_id, dna_string, index):
+        ClientOperation.__init__(self, manager, client, callback)
+
+        self._account_id = account_id
+        self._dna_string = dna_string
+        self._index = index
+
     def enterCreate(self):
-        pass
+        fields = {
+            'setDNAString': (self._dna_string,),
+            'setPosIndex': (self._index,)
+        }
+
+        self.manager.network.database_interface.create_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self.manager.network.dc_loader.dclasses_by_name['DistributedToon'],
+            fields=fields,
+            callback=lambda avatar_id: self.__avatar_created(avatar_id, self._index))
+
+    def __avatar_created(self, avatar_id, index):
+        self.manager.network.database_interface.query_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._account_id,
+            lambda dclass, fields: self.__account_loaded(dclass, fields, avatar_id, index),
+            self.manager.network.dc_loader.dclasses_by_name['Account'])
+
+    def __account_loaded(self, dclass, fields, avatar_id, index):
+        avatar_list = fields['ACCOUNT_AV_SET'][0]
+        avatar_list[index] = avatar_id
+
+        new_fields = {
+            'ACCOUNT_AV_SET': (avatar_list,)
+        }
+
+        self.manager.network.database_interface.update_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._account_id,
+            self.manager.network.dc_loader.dclasses_by_name['Account'],
+            new_fields)
 
     def exitCreate(self):
         pass
@@ -326,6 +375,15 @@ class ClientAccountManager(ClientOperationManager):
             return
 
         operation.request('Load')
+
+    def handle_create_avatar(self, client, callback, account_id, dna_string, index):
+        operation = self.run_operation(CreateAvatarFSM, client,
+            callback, account_id, dna_string, index)
+
+        if not operation:
+            return
+
+        operation.request('Create')
 
 class Client(io.NetworkHandler):
     notify = directNotify.newCategory('Client')
@@ -491,6 +549,12 @@ class Client(io.NetworkHandler):
             index = di.get_uint8()
         except:
             return self.handle_disconnect()
+
+        self.network.account_manager.handle_create_avatar(self, self.__handle_create_avatar_resp,
+            self._channel_alias, dna_string, index)
+
+    def __handle_create_avatar_resp(self, avatar_id):
+        pass
 
     def handle_set_avatar(self, di):
         try:
