@@ -1,6 +1,7 @@
 """
  * Copyright (C) Caleb Marshall - All Rights Reserved
  * Written by Caleb Marshall <anythingtechpro@gmail.com>, August 17th, 2017
+ * Contributed to by Prince Frizzy <theclashingfritz@gmail.com>, May 18th, 2018
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
@@ -494,12 +495,12 @@ class Client(io.NetworkHandler):
             dna_string = di.get_string()
             index = di.get_uint8()
             
-            '''datagram = io.NetworkDatagram()
+            datagram = io.NetworkDatagram()
             datagram.add_uint16(types.CLIENT_CREATE_AVATAR_RESP)
             datagram.add_uint16(echo_context)
             datagram.add_uint8(0)
             datagram.add_uint32(100000001)
-            self.handle_send_datagram(datagram)'''
+            self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
 
