@@ -15,12 +15,11 @@ from direct.fsm.FSM import FSM
 class ClientOperation(FSM):
     notify = directNotify.newCategory('ClientOperation')
 
-    def __init__(self, manager, client, play_token, callback):
+    def __init__(self, manager, client, callback):
         FSM.__init__(self, self.__class__.__name__)
 
         self._manager = manager
         self._client = client
-        self._play_token = play_token
         self._callback = callback
 
     @property
@@ -32,21 +31,21 @@ class ClientOperation(FSM):
         return self._client
 
     @property
-    def play_token(self):
-        return self._play_token
-
-    @property
     def callback(self):
         return self._callback
 
-    def defaultFilter(self, request, *args):
-        return FSM.defaultFilter(self, request, *args)
+    @callback.setter
+    def callback(self, callback):
+        self._callback = callback
 
     def enterOff(self):
         pass
 
     def exitOff(self):
         pass
+
+    def defaultFilter(self, request, *args):
+        return FSM.defaultFilter(self, request, *args)
 
 class ClientOperationManager(object):
     notify = directNotify.newCategory('ClientOperationManager')
@@ -68,38 +67,69 @@ class ClientOperationManager(object):
 
     def add_fsm(self, channel, fsm):
         if self.has_fsm(channel):
-            return None
+            return
 
         self._channel2fsm[channel] = fsm
-        return fsm
 
     def remove_fsm(self, channel):
         if not self.has_fsm(channel):
-            return None
+            return
 
         del self._channel2fsm[channel]
 
     def get_fsm(self, channel):
         return self._channel2fsm.get(channel)
 
-class AccountFSM(ClientOperation):
-    notify = directNotify.newCategory('AccountFSM')
+    def run_operation(self, fsm, client, callback, *args, **kwargs):
+        if self.has_fsm(client.channel):
+            self.notify.warning('Cannot run operation: %s for channel %d, operation already running!' % (
+                fsm.__name__, client.channel))
+
+            return None
+
+        operation = fsm(self, client, callback, *args, **kwargs)
+        self.add_fsm(client.channel, operation)
+        return operation
+
+    def stop_operation(self, client):
+        if not self.has_fsm(client.channel):
+            self.notify.warning('Cannot stop operation for channel %d, unknown operation!' % (
+                client.channel))
+
+            return
+
+        operation = self.get_fsm(client.channel)
+        operation.demand('Off')
+
+        self.remove_fsm(client.channel)
+
+class LoadAccountFSM(ClientOperation):
+    notify = directNotify.newCategory('LoadAccountFSM')
+
+    def __init__(self, manager, client, callback, play_token):
+        ClientOperation.__init__(self, manager, client, callback)
+
+        self._play_token = play_token
 
     def enterLoad(self):
-        if self.play_token not in self.manager.dbm:
+        if self._play_token not in self.manager.dbm:
             self.demand('Create')
             return
 
-        account_id = int(self.manager.dbm[self.play_token])
+        account_id = int(self.manager.dbm[self._play_token])
 
-        def account_queried(dclass, fields):
-            self.request('SetAccount', account_id)
-
-        self.manager.network.database_interface.query_object(self.client.channel,
-            types.DATABASE_CHANNEL,
-            account_id,
-            account_queried,
+        self.manager.network.database_interface.query_object(self.client.channel, types.DATABASE_CHANNEL, account_id,
+            lambda dclass, fields: self.__account_loaded(account_id, dclass, fields),
             self.manager.network.dc_loader.dclasses_by_name['Account'])
+
+    def __account_loaded(self, account_id, dclass, fields):
+        if not dclass and not fields:
+            self.notify.warning('Failed to load account: %d for channel: %d playtoken: %s!' % (
+                account_id, self._client.channel, self._play_token))
+
+            return
+
+        self.request('SetAccount', account_id)
 
     def exitLoad(self):
         pass
@@ -108,7 +138,7 @@ class AccountFSM(ClientOperation):
         fields = {
             'ACCOUNT_AV_SET': ([0] * 6,),
             'BIRTH_DATE': ('',),
-            'BLAST_NAME': (self.play_token,),
+            'BLAST_NAME': (self._play_token,),
             'CREATED': (time.ctime(),),
             'FIRST_NAME': ('',),
             'LAST_LOGIN': ('',),
@@ -119,15 +149,18 @@ class AccountFSM(ClientOperation):
             'ESTATE_ID': (0,)
         }
 
-        def account_created(account_id):
-            self.manager.dbm[self._play_token] = str(account_id)
-            self.request('SetAccount', account_id)
+        self.manager.network.database_interface.create_object(self.client.channel, types.DATABASE_CHANNEL,
+            self.manager.network.dc_loader.dclasses_by_name['Account'], fields=fields, callback=self.__account_created)
 
-        self.manager.network.database_interface.create_object(self.client.channel,
-            types.DATABASE_CHANNEL,
-            self.manager.network.dc_loader.dclasses_by_name['Account'],
-            fields=fields,
-            callback=account_created)
+    def __account_created(self, account_id):
+        if not account_id:
+            self.notify.warning('Failed to create account for channel: %d playtoken: %s!' % (
+                self._client.channel, self._play_token))
+
+            return
+
+        self.manager.dbm[self._play_token] = str(account_id)
+        self.request('SetAccount', account_id)
 
     def exitCreate(self):
         pass
@@ -137,15 +170,130 @@ class AccountFSM(ClientOperation):
         # it is now ok to mark the client as authenticated...
         self._client.authenticated = True
 
+        # TODO: FIXME!
+        # register the account channel
+        self._client.channel_alias = account_id
+        self._client.register_for_channel(account_id)
+
+        # we're all done.
+        self.ignoreAll()
+        self.manager.stop_operation(self._client)
+
         # call the callback our client object has specified,
         # this will notify the game client of the successful login...
         self._callback()
 
+    def exitSetAccount(self):
+        pass
+
+class ClientAvatarData(object):
+
+    def __init__(self, do_id, name_list, dna, position, name_index):
+        self._do_id = do_id
+        self._name_list = name_list
+        self._dna = dna
+        self._position = position
+        self._name_index = name_index
+
+    @property
+    def do_id(self):
+        return self._do_id
+
+    @do_id.setter
+    def do_id(self, do_id):
+        self._do_id = do_id
+
+    @property
+    def name_list(self):
+        return self._name_list
+
+    @name_list.setter
+    def name_list(self, name_list):
+        self._name_list = name_list
+
+    @property
+    def dna(self):
+        return self._dna
+
+    @dna.setter
+    def dna(self, dna):
+        self._dna = dna
+
+    @property
+    def position(self):
+        return self._position
+
+    @position.setter
+    def position(self, position):
+        self._position = position
+
+    @property
+    def name_index(self):
+        return self._name_index
+
+    @name_index.setter
+    def name_index(self, name_index):
+        self._name_index = name_index
+
+class RetrieveAvatarsFSM(ClientOperation):
+    notify = directNotify.newCategory('RetrieveAvatarsFSM')
+
+    def __init__(self, manager, client, callback, account_id):
+        ClientOperation.__init__(self, manager, client, callback)
+
+        self._account_id = account_id
+        self._avatar_data = []
+
+    def enterLoad(self):
+        self.manager.network.database_interface.query_object(self.client.channel, types.DATABASE_CHANNEL,
+            self._account_id, lambda dclass, fields: self.__account_loaded(dclass, fields),
+            self.manager.network.dc_loader.dclasses_by_name['Account'])
+
+    def exitLoad(self):
+        pass
+
+    def __account_loaded(self, dclass, fields):
+        avatar_list = fields['ACCOUNT_AV_SET'][0]
+
+        for avatar_id in avatar_list:
+
+            if not avatar_id:
+                continue
+
+            self.manager.network.database_interface.query_object(self.client.channel, types.DATABASE_CHANNEL,
+                self._avatar_id, lambda dclass, fields: self.__avatar_loaded(avatar_id, dclass, fields),
+                self.manager.network.dc_loader.dclasses_by_name['Account'])
+
+        # no avatars found...
+        if not self._avatar_data:
+            self.request('SetAvatars')
+
+    def __avatar_loaded(self, avatar_id, dclass, fields):
+        avatar_data = ClientAvatarData(avatar_id, ['', '', '', ''], fields['setDNAString'][0],
+            len(self._avatar_data), 0)
+
+        self._avatar_data.append(avatar_data)
+
+        if len(self._avatar_data) >= 6:
+            self.request('SetAvatars')
+
+    def enterSetAvatars(self):
+        self._callback(self._avatar_data)
+
         # we're all done.
         self.ignoreAll()
-        self.demand('Off')
+        self.manager.stop_operation(self._client)
 
-    def exitSetAccount(self):
+    def exitSetAvatars(self):
+        pass
+
+class CreateAvatarFSM(ClientOperation):
+    notify = directNotify.newCategory('CreateAvatarFSM')
+
+    def enterCreate(self):
+        pass
+
+    def exitCreate(self):
         pass
 
 class ClientAccountManager(ClientOperationManager):
@@ -161,29 +309,23 @@ class ClientAccountManager(ClientOperationManager):
     def dbm(self):
         return self._dbm
 
-    def login(self, client, play_token, callback=None):
-        fsm = self.add_fsm(client.channel, AccountFSM(self, client,
-            play_token, callback))
+    def handle_login(self, client, callback, play_token):
+        operation = self.run_operation(LoadAccountFSM, client,
+            callback, play_token)
 
-        if not fsm:
-            self.notify.warning('Failed to add account operation for channel: %d with playtoken: %s!' % (
-                client.channel, play_token))
-
+        if not operation:
             return
 
-        fsm.request('Load')
+        operation.request('Load')
 
-    def abandon_login(self, client):
-        fsm = self.get_fsm(client.channel)
+    def handle_retrieve_avatars(self, client, callback, account_id):
+        operation = self.run_operation(RetrieveAvatarsFSM, client,
+            callback, account_id)
 
-        if not fsm:
-            self.notify.warning('Failed to abandon account operation for channel: %d!' % (
-                client.channel))
-
+        if not operation:
             return
 
-        fsm.demand('Off')
-        self.remove_fsm(client.channel)
+        operation.request('Load')
 
 class Client(io.NetworkHandler):
     notify = directNotify.newCategory('Client')
@@ -192,7 +334,20 @@ class Client(io.NetworkHandler):
         io.NetworkHandler.__init__(self, *args, **kwargs)
 
         self.channel = self.network.channel_allocator.allocate()
+
+        # TODO: replace this with a dynamic list of owned channels which are,
+        # registered with the md (account_id, avatar_id etc...)
+        self._channel_alias = None
+
         self._authenticated = False
+
+    @property
+    def channel_alias(self):
+        return self._channel_alias
+
+    @channel_alias.setter
+    def channel_alias(self, channel_alias):
+        self._channel_alias = channel_alias
 
     @property
     def authenticated(self):
@@ -280,8 +435,8 @@ class Client(io.NetworkHandler):
 
             return
 
-        self.network.account_manager.login(self, play_token, callback=lambda: \
-            self.__handle_login_resp(play_token))
+        self.network.account_manager.handle_login(self, lambda: self.__handle_login_resp(
+            play_token), play_token)
 
     def __handle_login_resp(self, play_token):
         datagram = io.NetworkDatagram()
@@ -308,10 +463,25 @@ class Client(io.NetworkHandler):
         self.handle_send_datagram(datagram)
 
     def handle_get_avatars(self):
+        self.network.account_manager.handle_retrieve_avatars(self, self.__handle_retrieve_avatars_resp,
+            self._channel_alias)
+
+    def __handle_retrieve_avatars_resp(self, avatar_data):
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GET_AVATARS_RESP)
         datagram.add_uint8(0)
-        datagram.add_uint16(0)
+        datagram.add_uint16(len(avatar_data))
+
+        for avatar in avatar_data:
+            datagram.add_uint32(avatar.do_id)
+            datagram.add_string(avatar.name_list[0])
+            datagram.add_string(avatar.name_list[1])
+            datagram.add_string(avatar.name_list[2])
+            datagram.add_string(avatar.name_list[3])
+            datagram.add_string(avatar.dna)
+            datagram.add_uint8(avatar.position)
+            datagram.add_uint8(avatar.name_index)
+
         self.handle_send_datagram(datagram)
 
     def handle_create_avatar(self, di):
@@ -330,7 +500,7 @@ class Client(io.NetworkHandler):
 
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):
-            self.network.account_manager.abandon_login(self)
+            self.network.account_manager.stop_operation(self)
 
         if self.channel:
             self.network.channel_allocator.free(self.channel)
