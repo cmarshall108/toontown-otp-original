@@ -113,8 +113,8 @@ dclass DistributedToon : DistributedSmoothNode {
                         0 * 6,       // Trap
                         0 * 6,       // Lure
                         0 * 6,       // Sound
-                        1, 0 * 5,       // Throw
-                        1, 0 * 5,       // Squirt
+                        1, 0 * 5,    // Throw
+                        1, 0 * 5,    // Squirt
                         0 * 6        // Drop
                         }) required p2p db;
 

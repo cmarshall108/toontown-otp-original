@@ -224,9 +224,6 @@ class MessageInterface(object):
                 self.remove_message(message)
                 continue
 
-            if not self._network.interface.has_channel(message.sender):
-                continue
-
             if not self._network.interface.has_channel(message.channel):
                 continue
 

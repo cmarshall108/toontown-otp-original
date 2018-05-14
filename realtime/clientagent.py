@@ -346,6 +346,43 @@ class CreateAvatarFSM(ClientOperation):
     def exitCreate(self):
         pass
 
+class LoadAvatarFSM(ClientOperation):
+    notify = directNotify.newCategory('LoadAvatarFSM')
+
+    def __init__(self, manager, client, callback, avatar_id):
+        ClientOperation.__init__(self, manager, client, callback)
+
+        self._avatar_id = avatar_id
+        self._dclass = None
+        self._fields = {}
+
+    def enterQuery(self):
+
+        def response(dclass, fields):
+            self._dclass = dclass
+            self._fields = fields
+            self.request('Activate')
+
+        self.manager.network.database_interface.query_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._avatar_id,
+            response,
+            self.manager.network.dc_loader.dclasses_by_name['DistributedToon'])
+
+    def exitQuery(self):
+        pass
+
+    def enterActivate(self):
+        datagram = io.NetworkDatagram()
+        datagram.add_header(types.STATESERVER_CHANNEL, self._client.channel,
+            types.STATESERVER_SET_AVATAR)
+
+        datagram.add_uint32(self._avatar_id)
+        self.manager.network.handle_send_connection_datagram(datagram)
+
+    def exitActivate(self):
+        pass
+
 class ClientAccountManager(ClientOperationManager):
     notify = directNotify.newCategory('ClientAccountManager')
 
@@ -385,6 +422,15 @@ class ClientAccountManager(ClientOperationManager):
             return
 
         operation.request('Create')
+
+    def handle_set_avatar(self, client, callback, avatar_id):
+        operation = self.run_operation(LoadAvatarFSM, client,
+            callback, avatar_id)
+
+        if not operation:
+            return
+
+        operation.request('Query')
 
 class Client(io.NetworkHandler):
     notify = directNotify.newCategory('Client')
@@ -474,6 +520,8 @@ class Client(io.NetworkHandler):
     def handle_internal_datagram(self, message_type, sender, di):
         if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
             self.handle_get_shard_list_resp(di)
+        elif message_type == types.CLIENT_GET_AVATAR_DETAILS_RESP:
+            self.handle_avatar_details_resp(di)
         else:
             self.network.database_interface.handle_datagram(message_type, di)
 
@@ -552,7 +600,7 @@ class Client(io.NetworkHandler):
             echo_context = di.get_uint16()
             dna_string = di.get_string()
             index = di.get_uint8()
-            
+
             datagram = io.NetworkDatagram()
             datagram.add_uint16(types.CLIENT_CREATE_AVATAR_RESP)
             datagram.add_uint16(echo_context)
@@ -573,12 +621,26 @@ class Client(io.NetworkHandler):
             avatar_id = di.get_uint32()
         except:
             return self.handle_disconnect()
-            
+
+        self.network.account_manager.handle_set_avatar(self, self.__handle_set_avatar_resp,
+            avatar_id)
+
+    def __handle_set_avatar_resp(self, avatar_id):
+        pass
+
+    def handle_avatar_details_resp(self, di):
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_GET_AVATAR_DETAILS_RESP)
+        datagram.add_uint32(di.get_uint32())
+        datagram.add_uint8(0)
+        datagram.append_data(di.get_remaining_bytes())
+        self.handle_send_datagram(datagram)
+
     def handle_set_wishname(self, di):
         try:
             avatar_id = di.get_uint32()
             wish_name = di.get_string()
-            
+
             datagram = io.NetworkDatagram()
             datagram.add_uint16(types.CLIENT_SET_WISHNAME_RESP)
             datagram.add_uint32(avatar_id)
@@ -589,7 +651,7 @@ class Client(io.NetworkHandler):
             self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
-            
+
     def handle_set_name_pattern(self, di):
         try:
             name_indices = []
@@ -603,7 +665,7 @@ class Client(io.NetworkHandler):
             name_flags.append(di.get_uint16())
             name_indices.append(di.get_uint16())
             name_flags.append(di.get_uint16())
-            
+
             #TODO: Actually parse and set the name pattern name.
             datagram = io.NetworkDatagram()
             datagram.add_uint16(types.CLIENT_SET_NAME_PATTERN_ANSWER)
@@ -612,7 +674,7 @@ class Client(io.NetworkHandler):
             self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
-            
+
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):
             self.network.account_manager.stop_operation(self)

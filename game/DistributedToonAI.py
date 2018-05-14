@@ -7,110 +7,46 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 	def __init__(self, air):
 		DistributedSmoothNodeAI.__init__(self, air)
 
-	def generate(self):
-		DistributedSmoothNodeAI.generate(self)
-
-	def announceGenerate(self):
-		DistributedSmoothNodeAI.announceGenerate(self)
-
-	def setParent(self, parent):
-		self.sendUpdate('setParent', [
-			parent])
-
-	def clearSmoothing(self, bogus):
-		self.sendUpdate('clearSmoothing', [
-			bogus])
-
-	def setSmPosHpr(self, x, y, z, h, p, r, t):
-		self.sendUpdate('setSmPosHpr', [
-			x,
-			y,
-			z,
-			h,
-			p,
-			r,
-			t])
-
-	def setSmStop(self, timestamp):
-		self.sendUpdate('setSmStop', [
-			timestamp])
-
-	def setAnimState(self, an1, an2, timestamp):
-		pass
-
-	def setSmXY(self, x, y, timestamp):
-		self.sendUpdate('setSmXY', [
-			x,
-			y,
-			timestamp])
-
-	def setSmPos(self, x, y, z, timestamp):
-		self.sendUpdate('setSmPos', [
-			x,
-			y,
-			z,
-			timestamp])
-
-	def setSmStop(self, timestamp):
-		self.sendUpdate('setSmStop', [
-			timestamp])
-
-	def setSmH(self, h, timestamp):
-		self.sendUpdate('setSmH', [
-			h, 
-			timestamp])
-
-	def setSmXYH(self, x, y, h, timestamp):
-		self.sendUpdate('setSmXYH', [
-			x,
-			y,
-			h,
-			timestamp])
-
-	def suggestResync(self, avatarId):
-		self.sendUpdate('suggestResync', [
-			avatarId])
-
-	def setNearbyAvatarQT(self, qtList):
-		self.sendUpdate('setNearbyAvatarQT', [
-			qtList])
-
-	def setQT(self, qtSequence):
-		self.sendUpdate('setQT', [
-			qtSequence])
-
-	def setQTQuest(self, qtSequence):
-		self.sendUpdate('setQTQuest', [
-			qtSequence])
-
-	def setEmoteState(self, emote1, emote2, timestamp):
-		self.sendUpdate('setEmoteState', [
-			emote1,
-			emote2,
-			timestamp])
-
-	def teleportQuery(self, requesterId):
-		self.sendUpdate('teleportQuery', [
-			requesterId])
-
-	def teleportResponse(self, avId, available, shardId, hoodId, zoneId):
-		self.sendUpdate('teleportResponse', [
-			avId,
-			available,
-			shardId,
-			hoodId,
-			zoneId])
-
-	def setWhisperQTFrom(self, fromId, qtSequence):
-		self.sendUpdate('setWhisperQTFrom', [
-			fromId,
-			qtSequence])
-
-	def setAvatarId(self, avatarId):
-		self.avatarId = avatarId
-
-	def getAvatarId(self):
-		return self.avatarId
+		self.name = "Toon"
+		self.dnaString = "t\x12\x02\x00\x01\x03\x07\x03\x07\x07\x04\x08\x00\x08\x08"
+		self.maxBankMoney = 1000
+		self.bankMoney = 0
+		self.maxMoney = 40
+		self.money = 0
+		self.maxHp = 15
+		self.hp = 0
+		self.experience = ''
+		self.maxCarry = 20
+		self.trackAccess = [0, 0, 0, 0, 1, 1, 0]
+		self.trackProgress = [-1, 0]
+		self.inventory = ''
+		self.friendsList = []
+		self.defaultShard = 200000000
+		self.defaultZone = 1000
+		self.shtickerBook = ''
+		self.zonesVisited = [2000]
+		self.hoodsVisited = [2000]
+		self.interface = ''
+		self.accountName = ''
+		self.lastHood = 0
+		self.tutorialAck = 0
+		self.maxClothes = 10
+		self.clothesTopsList = []
+		self.clothesBottomsList = []
+		self.emoteAccess = []
+		self.teleportAccess = []
+		self.cogStatus = [1] * 32
+		self.cogCount = [0] * 32
+		self.cogRadar = [0] * 4
+		self.buildingRadar = [0] * 4
+		self.fishes = []
+		self.houseId = 0
+		self.quests = []
+		self.questHistory = []
+		self.rewardHistory = [0, []]
+		self.questCarryLimit = 1
+		self.cheesyEffect = [0, 0, 0]
+		self.posIndex = 0
 
 	def setName(self, name):
 		self.name = name
@@ -122,7 +58,7 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 		self.dnaString = dnaString
 
 	def getDNAString(self):
-		return self.dnaString.decode('base64')
+		return self.dnaString
 
 	def setMaxBankMoney(self, maxBankMoney):
 		self.maxBankMoney = maxBankMoney
@@ -178,8 +114,8 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 	def getTrackAccess(self):
 		return self.trackAccess
 
-	def setTrackProgress(self, trackProgress):
-		self.trackProgress = trackProgress
+	def setTrackProgress(self, track, progress):
+		self.trackProgress = [track, progress]
 
 	def getTrackProgress(self):
 		return self.trackProgress
@@ -190,11 +126,11 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 	def getInventory(self):
 		return self.inventory
 
-	def setFriendsList(self, frieldsList):
-		self.frieldsList = frieldsList
+	def setFriendsList(self, friendsList):
+		self.friendsList = friendsList
 
 	def getFriendsList(self):
-		return self.frieldsList
+		return self.friendsList
 
 	def setDefaultShard(self, defaultShard):
 		self.defaultShard = defaultShard
@@ -328,8 +264,8 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 	def getQuestHistory(self):
 		return self.questHistory
 
-	def setRewardHistory(self, rewardHistory):
-		self.rewardHistory = rewardHistory
+	def setRewardHistory(self, rewardTier, rewardList):
+		self.rewardHistory = [rewardTier, rewardList]
 
 	def getRewardHistory(self):
 		return self.rewardHistory
@@ -340,8 +276,8 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 	def getQuestCarryLimit(self):
 		return self.questCarryLimit
 
-	def setCheesyEffect(self, cheesyEffect):
-		self.cheesyEffect = cheesyEffect
+	def setCheesyEffect(self, effect, hoodId, expireTime):
+		self.cheesyEffect = [effect, hoodId, expireTime]
 
 	def getCheesyEffect(self):
 		return self.cheesyEffect
