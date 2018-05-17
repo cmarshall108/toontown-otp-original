@@ -540,7 +540,7 @@ class Client(io.NetworkHandler):
 
             return
 
-        if token_type != types.CLIENT_LOGIN_2_PLAY_TOKEN:
+        if token_type != types.CLIENT_LOGIN_2_BLUE:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_PLAY_TOKEN_TYPE, 'Invalid play token type: %d!' % (
                 token_type))
 

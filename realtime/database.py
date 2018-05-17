@@ -322,21 +322,12 @@ class DatabaseServer(io.NetworkConnector):
 
         for index in xrange(dc_class.get_num_fields()):
             field_packer = DCPacker()
-            field = dc_class.get_field_by_index(index)
+            field = dc_class.get_inherited_field(index)
 
-            if not field:
-                field = dc_class.get_inherited_field(index)
-
-            if not field:
+            if not field or field.get_name() in fields:
                 continue
 
-            if field.get_name() in fields:
-                continue
-
-            if not field.is_db():
-                continue
-
-            if not field.has_default_value():
+            if not field.is_db() or not field.has_default_value():
                 continue
 
             field_packer.set_unpack_data(field.get_default_value())

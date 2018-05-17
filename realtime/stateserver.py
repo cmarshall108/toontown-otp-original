@@ -56,15 +56,18 @@ class StateObject(object):
         self._has_other = has_other
         self._required_fields = {}
 
-        for index in xrange(self._dc_class.get_num_inherited_fields()):
-            field = self._dc_class.get_inherited_field(index)
+        for index in xrange(self._dc_class.get_num_fields()):
+            field = self._dc_class.get_field_by_index(index)
+
+            if not field:
+                continue
 
             if not field.as_atomic_field() or not field.is_required():
                 continue
 
             self._required_fields[field.get_number()] = field.get_default_value()
 
-        self.network.register_for_channel(self._do_id)
+        self._network.register_for_channel(self._do_id)
 
     @property
     def do_id(self):
@@ -89,7 +92,7 @@ class StateObject(object):
     def append_required_data(self, datagram):
         dc_packer = DCPacker()
         for index in self._required_fields:
-            field = self._dc_class.get_inherited_field(index)
+            field = self._dc_class.get_field_by_index(index)
 
             if not field:
                 self.notify.error('Failed to append required data for field: %s dclass: %s, unknown field' % (
