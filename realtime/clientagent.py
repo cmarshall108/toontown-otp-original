@@ -313,7 +313,7 @@ class CreateAvatarFSM(ClientOperation):
         fields = {
             'setDNAString': (self._dna_string,),
             'setPosIndex': (self._index,),
-            'setName': ("Toon",)
+            'setName': ('Toon',)
         }
 
         self.manager.network.database_interface.create_object(self.client.channel,
@@ -393,8 +393,8 @@ class LoadAvatarFSM(ClientOperation):
 
     def exitActivate(self):
         pass
-        
-        
+
+
 class SetNameFSM(ClientOperation):
     notify = directNotify.newCategory('SetNameFSM')
 
@@ -426,23 +426,23 @@ class SetNameFSM(ClientOperation):
     def enterSetName(self):
         # TODO: Parse a check the wishname for bad names and etc.
         self._fields['setName'] = self._wish_name
-        
+
         self.manager.network.database_interface.update_object(self.client.channel,
             types.DATABASE_CHANNEL,
             self._avatar_id,
             self.manager.network.dc_loader.dclasses_by_name['DistributedToon'],
             self._fields)
-            
+
         self._callback(self._avatar_id, self._wish_name)
-        
+
         # We're all done
         self.ignoreAll()
         self.manager.stop_operation(self._client)
 
     def exitSetName(self):
         pass
-        
-        
+
+
 class GetAvatarDetailsFSM(ClientOperation):
     notify = directNotify.newCategory('GetAvatarDetailsFSM')
 
@@ -455,7 +455,7 @@ class GetAvatarDetailsFSM(ClientOperation):
         self._fields = {}
 
     def enterQuery(self):
-    
+
         def response(dclass, fields):
             self._dclass = dclass
             self._fields = fields
@@ -473,7 +473,7 @@ class GetAvatarDetailsFSM(ClientOperation):
     def enterSendDetails(self):
         #TODO: Finish getting the avatar details, packing them, then sending them off.
         #self._callback()
-        
+
         # We're all done
         self.ignoreAll()
         self.manager.stop_operation(self._client)
@@ -529,7 +529,7 @@ class ClientAccountManager(ClientOperationManager):
             return
 
         operation.request('Query')
-        
+
     def handle_get_avatar_details(self, client, callback, avatar_id):
         operation = self.run_operation(GetAvatarDetailsFSM, client,
             callback, avatar_id)
@@ -538,7 +538,7 @@ class ClientAccountManager(ClientOperationManager):
             return
 
         operation.request('Query')
-        
+
     def handle_set_wishname(self, client, callback, avatar_id, wish_name):
         operation = self.run_operation(SetNameFSM, client,
             callback, avatar_id, wish_name)
@@ -777,7 +777,7 @@ class Client(io.NetworkHandler):
 
     def __handle_set_avatar_resp(self, avatar_id):
         pass
-        
+
     def handle_get_avatar_details(self, di):
         try:
             avatar_id = di.get_uint32()
@@ -787,7 +787,7 @@ class Client(io.NetworkHandler):
                     self._channel))
 
             return
-            
+
         self.network.account_manager.handle_get_avatar_details(self, self.handle_avatar_details_resp,
             avatar_id)
 
@@ -809,10 +809,10 @@ class Client(io.NetworkHandler):
                     self._channel))
 
             return
-            
+
         self.network.account_manager.handle_set_wishname(self, self.__handle_set_wishname_resp,
             avatar_id, wish_name)
-            
+
     def __handle_set_wishname_resp(self, avatar_id, wish_name):
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_SET_WISHNAME_RESP)
