@@ -737,7 +737,7 @@ class Client(io.NetworkHandler):
             datagram.add_uint16(types.CLIENT_CREATE_OBJECT_REQUIRED)
 
         datagram.add_uint16(dc_id)
-        datagram.add_uint_32(do_id)
+        datagram.add_uint32(do_id)
         datagram.append_data(di.get_remaining_bytes())
         self.handle_send_datagram(datagram)
 
