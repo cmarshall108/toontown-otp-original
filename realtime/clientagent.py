@@ -492,7 +492,7 @@ class Client(io.NetworkHandler):
             message_type = di.get_uint16()
         except:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                "Received truncated datagram from channel: %d!" % (
+                'Received truncated datagram from channel: %d!' % (
                     self._channel))
 
             return
@@ -505,8 +505,9 @@ class Client(io.NetworkHandler):
             self.handle_disconnect()
         else:
             if not self._authenticated:
-                self.handle_send_disconnect(types.CLIENT_DISCONNECT_ANONYMOUS_VIOLATION, 'Cannot send datagram with message type: %d, channel: %d not yet authenticated!' % (
-                    message_type, self.channel))
+                self.handle_send_disconnect(types.CLIENT_DISCONNECT_ANONYMOUS_VIOLATION,
+                    'Cannot send datagram with message type: %d, channel: %d not yet authenticated!' % (
+                        message_type, self.channel))
 
                 return
             else:
@@ -534,8 +535,9 @@ class Client(io.NetworkHandler):
         elif message_type == types.CLIENT_OBJECT_UPDATE_FIELD:
             self.handle_object_update_field(di)
         else:
-            self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, 'Unknown datagram: %d from channel: %d!' % (
-                message_type, self.channel))
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE,
+                'Unknown datagram: %d from channel: %d!' % (
+                    message_type, self.channel))
 
             return
 
@@ -561,20 +563,22 @@ class Client(io.NetworkHandler):
             token_type = di.get_int32()
         except:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                "Received truncated datagram from channel: %d!" % (
+                'Received truncated datagram from channel: %d!' % (
                     self._channel))
 
             return
 
         if server_version != self.network.server_version:
-            self.handle_send_disconnect(types.CLIENT_DISCONNECT_BAD_VERSION, 'Invalid server version: %s, expected: %s!' % (
-                server_version, self.network.server_version))
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_BAD_VERSION,
+                'Invalid server version: %s, expected: %s!' % (
+                    server_version, self.network.server_version))
 
             return
 
         if token_type != types.CLIENT_LOGIN_2_BLUE:
-            self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_PLAY_TOKEN_TYPE, 'Invalid play token type: %d!' % (
-                token_type))
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_PLAY_TOKEN_TYPE,
+                'Invalid play token type: %d!' % (
+                    token_type))
 
             return
 
@@ -634,7 +638,7 @@ class Client(io.NetworkHandler):
             index = di.get_uint8()
         except:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                "Received truncated datagram from channel: %d!" % (
+                'Received truncated datagram from channel: %d!' % (
                     self._channel))
 
             return
@@ -676,7 +680,7 @@ class Client(io.NetworkHandler):
             wish_name = di.get_string()
         except:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                "Received truncated datagram from channel: %d!" % (
+                'Received truncated datagram from channel: %d!' % (
                     self._channel))
 
             return
@@ -718,7 +722,7 @@ class Client(io.NetworkHandler):
             shard_id = di.get_uint32()
         except:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                "Received truncated datagram from channel: %d!" % (
+                'Received truncated datagram from channel: %d!' % (
                     self._channel))
 
             return
@@ -732,7 +736,7 @@ class Client(io.NetworkHandler):
             zone_id = di.get_uint16()
         except:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                "Received truncated datagram from channel: %d!" % (
+                'Received truncated datagram from channel: %d!' % (
                     self._channel))
 
             return
@@ -772,14 +776,15 @@ class Client(io.NetworkHandler):
             field_id = di.get_uint16()
         except:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                "Received truncated datagram from channel: %d!" % (
+                'Received truncated datagram from channel: %d!' % (
                     self._channel))
 
             return
 
         if not di.get_remaining_size():
-            self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM, "Cannot update field: %d for object: %d, truncated datagram!" % (
-                field_id, do_id))
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
+                'Cannot update field: %d for object: %d, truncated datagram!' % (
+                    field_id, do_id))
 
             return
 
