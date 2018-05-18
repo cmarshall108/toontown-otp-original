@@ -63,7 +63,8 @@ class AIRepository(OTPInternalRepository):
         self.timeManager.generateWithRequired(OTP_ZONE_ID_OLD_QUIET_ZONE)
 
     def createZones(self):
-        self.hoods.append(TTHoodAI(self))
+        if simbase.config.GetBool('want-toontown-central', False):
+            self.hoods.append(TTHoodAI(self))
 
         for hood in self.hoods:
             hood.createObjects()
