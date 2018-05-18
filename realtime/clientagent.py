@@ -501,7 +501,7 @@ class Client(io.NetworkHandler):
             self.handle_disconnect()
         else:
             if not self._authenticated:
-                self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, 'Cannot send datagram with message type: %d, channel: %d not yet authenticated!' % (
+                self.handle_send_disconnect(types.CLIENT_DISCONNECT_ANONYMOUS_VIOLATION, 'Cannot send datagram with message type: %d, channel: %d not yet authenticated!' % (
                     message_type, self.channel))
 
                 return
@@ -624,21 +624,19 @@ class Client(io.NetworkHandler):
             echo_context = di.get_uint16()
             dna_string = di.get_string()
             index = di.get_uint8()
-
-            datagram = io.NetworkDatagram()
-            datagram.add_uint16(types.CLIENT_CREATE_AVATAR_RESP)
-            datagram.add_uint16(echo_context)
-            datagram.add_uint8(0)
-            datagram.add_uint32(100000001)
-            self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
 
-        self.network.account_manager.handle_create_avatar(self, self.__handle_create_avatar_resp,
-            self._channel_alias, dna_string, index)
+        self.network.account_manager.handle_create_avatar(self, lambda avatar_id: __handle_create_avatar_resp(
+            echo_context, avatar_id), self._channel_alias, dna_string, index)
 
-    def __handle_create_avatar_resp(self, avatar_id):
-        pass
+    def __handle_create_avatar_resp(self, echo_context, avatar_id):
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_CREATE_AVATAR_RESP)
+        datagram.add_uint16(echo_context)
+        datagram.add_uint8(0)
+        datagram.add_uint32(avatar_id)
+        self.handle_send_datagram(datagram)
 
     def handle_set_avatar(self, di):
         try:
@@ -750,8 +748,11 @@ class Client(io.NetworkHandler):
             field_id = di.get_uint16()
         except:
             return self.handle_disconnect()
-        
+
         if not di.get_remaining_size():
+            self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM, "Cannot update field: %d for object: %d, truncated datagram!" % (
+                field_id, do_id))
+
             return
 
     def shutdown(self):
