@@ -171,40 +171,40 @@ class StateObject(object):
         self._old_zone_id = self._zone_id
         self._zone_id = zone_id
 
-        # tell our parent that we are moving zones under them,
-        # they should know about this because; we are only changing zones
-        # and not parent interests....
-        datagram = io.NetworkDatagram()
-        datagram.add_header(self._parent_id, self._network.channel, types.STATESERVER_OBJECT_CHANGING_LOCATION)
-        datagram.add_uint32(self._do_id)
-        datagram.add_uint32(self._parent_id)
-        datagram.add_uint32(self._zone_id)
-        self._network.handle_send_connection_datagram(datagram)
-
         # update our interest set.
         self.update_interests()
 
-        # if we have an owner, tell them that we've sent all of the initial zone
-        # objects in the new interest set...
-        if not self._owner_id:
-            return
-
-        datagram = io.NetworkDatagram()
-        datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_SET_ZONE_RESP)
-        datagram.add_uint32(self._zone_id)
-        self._network.handle_send_connection_datagram(datagram)
+        # determine if the owner of this object is an AI or if the owner
+        # is a client...
+        if self._network.shard_manager.has_shard(self._owner_id):
+            # tell our parent that we are moving zones under them,
+            # they should know about this because; we are only changing zones
+            # and not parent interests....
+            datagram = io.NetworkDatagram()
+            datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_CHANGING_LOCATION)
+            datagram.add_uint32(self._do_id)
+            datagram.add_uint32(self._parent_id)
+            datagram.add_uint32(self._zone_id)
+            self._network.handle_send_connection_datagram(datagram)
+        else:
+            # if we have an owner, tell them that we've sent all of the initial zone
+            # objects in the new interest set...
+            datagram = io.NetworkDatagram()
+            datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_SET_ZONE_RESP)
+            datagram.add_uint32(self._zone_id)
+            self._network.handle_send_connection_datagram(datagram)
 
     def update_interests(self):
+        # if this object doesn't have an owner, then let's assume it's
+        # owned by an AI and not a owner specific object...
+        if self._network.shard_manager.has_shard(self._owner_id):
+            return
+
         for state_object in self._network.object_manager.state_objects.values():
             if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
                 self.handle_send_object_generate(state_object)
 
     def handle_send_object_generate(self, state_object):
-        # if this object doesn't have an owner, then let's assume it's
-        # owned by an AI and not a owner specific object...
-        if not self._owner_id:
-            return
-
         datagram = io.NetworkDatagram()
         datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
         datagram.add_uint64(state_object.do_id)
@@ -267,9 +267,9 @@ class StateServer(io.NetworkConnector):
         elif message_type == types.STATESERVER_GET_SHARD_ALL:
             self.handle_get_shard_list(sender, di)
         elif message_type == types.STATESERVER_OBJECT_GENERATE_WITH_REQUIRED:
-            self.handle_generate(False, di)
+            self.handle_generate(sender, False, di)
         elif message_type == types.STATESERVER_OBJECT_GENERATE_WITH_REQUIRED_OTHER:
-            self.handle_generate(True, di)
+            self.handle_generate(sender, True, di)
         elif message_type == types.STATESERVER_SET_AVATAR:
             self.handle_set_avatar(sender, di)
         else:
@@ -301,7 +301,7 @@ class StateServer(io.NetworkConnector):
 
         self.handle_send_connection_datagram(datagram)
 
-    def handle_generate(self, has_other, di):
+    def handle_generate(self, sender, has_other, di):
         do_id = di.get_uint32()
         parent_id = di.get_uint32()
         zone_id = di.get_uint32()
@@ -322,6 +322,8 @@ class StateServer(io.NetworkConnector):
             return
 
         state_object = StateObject(self, do_id, parent_id, zone_id, dc_class, has_other, di)
+        state_object.owner_id = sender
+
         self._object_manager.add_state_object(state_object)
 
     def handle_set_avatar(self, sender, di):
