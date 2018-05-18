@@ -285,7 +285,7 @@ class RetrieveAvatarsFSM(ClientOperation):
         avatar_list = []
 
         for avatar_id, fields in self._avatar_fields.items():
-            avatar_data = ClientAvatarData(avatar_id, ['', '', '', ''], fields['setDNAString'][0],
+            avatar_data = ClientAvatarData(avatar_id, [fields['setName'][0], '', '', ''], fields['setDNAString'][0],
                 fields['setPosIndex'][0], 0)
 
             avatar_list.append(avatar_data)
@@ -312,7 +312,8 @@ class CreateAvatarFSM(ClientOperation):
     def enterCreate(self):
         fields = {
             'setDNAString': (self._dna_string,),
-            'setPosIndex': (self._index,)
+            'setPosIndex': (self._index,),
+            'setName': ("Toon",)
         }
 
         self.manager.network.database_interface.create_object(self.client.channel,
@@ -392,6 +393,93 @@ class LoadAvatarFSM(ClientOperation):
 
     def exitActivate(self):
         pass
+        
+        
+class SetNameFSM(ClientOperation):
+    notify = directNotify.newCategory('SetNameFSM')
+
+    def __init__(self, manager, client, callback, avatar_id, wish_name):
+        ClientOperation.__init__(self, manager, client, callback)
+
+        self._avatar_id = avatar_id
+        self._wish_name = wish_name
+        self._callback = callback
+        self._dclass = None
+        self._fields = {}
+
+    def enterQuery(self):
+
+        def response(dclass, fields):
+            self._dclass = dclass
+            self._fields = fields
+            self.request('SetName')
+
+        self.manager.network.database_interface.query_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._avatar_id,
+            response,
+            self.manager.network.dc_loader.dclasses_by_name['DistributedToon'])
+
+    def exitQuery(self):
+        pass
+
+    def enterSetName(self):
+        # TODO: Parse a check the wishname for bad names and etc.
+        self._fields['setName'] = self._wish_name
+        
+        self.manager.network.database_interface.update_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._avatar_id,
+            self.manager.network.dc_loader.dclasses_by_name['DistributedToon'],
+            self._fields)
+            
+        self._callback(self._avatar_id, self._wish_name)
+        
+        # We're all done
+        self.ignoreAll()
+        self.manager.stop_operation(self._client)
+
+    def exitSetName(self):
+        pass
+        
+        
+class GetAvatarDetailsFSM(ClientOperation):
+    notify = directNotify.newCategory('GetAvatarDetailsFSM')
+
+    def __init__(self, manager, client, callback, avatar_id):
+        ClientOperation.__init__(self, manager, client, callback)
+
+        self._avatar_id = avatar_id
+        self._callback = callback
+        self._dclass = None
+        self._fields = {}
+
+    def enterQuery(self):
+    
+        def response(dclass, fields):
+            self._dclass = dclass
+            self._fields = fields
+            self.request('SendDetails')
+
+        self.manager.network.database_interface.query_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._avatar_id,
+            response,
+            self.manager.network.dc_loader.dclasses_by_name['DistributedToon'])
+
+    def exitQuery(self):
+        pass
+
+    def enterSendDetails(self):
+        #TODO: Finish getting the avatar details, packing them, then sending them off.
+        #self._callback()
+        
+        # We're all done
+        self.ignoreAll()
+        self.manager.stop_operation(self._client)
+
+    def exitSendDetails(self):
+        pass
 
 class ClientAccountManager(ClientOperationManager):
     notify = directNotify.newCategory('ClientAccountManager')
@@ -436,6 +524,24 @@ class ClientAccountManager(ClientOperationManager):
     def handle_set_avatar(self, client, callback, avatar_id):
         operation = self.run_operation(LoadAvatarFSM, client,
             callback, avatar_id)
+
+        if not operation:
+            return
+
+        operation.request('Query')
+        
+    def handle_get_avatar_details(self, client, callback, avatar_id):
+        operation = self.run_operation(GetAvatarDetailsFSM, client,
+            callback, avatar_id)
+
+        if not operation:
+            return
+
+        operation.request('Query')
+        
+    def handle_set_wishname(self, client, callback, avatar_id, wish_name):
+        operation = self.run_operation(SetNameFSM, client,
+            callback, avatar_id, wish_name)
 
         if not operation:
             return
@@ -513,6 +619,8 @@ class Client(io.NetworkHandler):
             self.handle_get_shard_list()
         elif message_type == types.CLIENT_GET_AVATARS:
             self.handle_get_avatars()
+        elif message_type == types.CLIENT_GET_AVATAR_DETAILS:
+            self.handle_get_avatar_details()
         elif message_type == types.CLIENT_CREATE_AVATAR:
             self.handle_create_avatar(di)
         elif message_type == types.CLIENT_SET_AVATAR:
@@ -649,6 +757,15 @@ class Client(io.NetworkHandler):
 
     def __handle_set_avatar_resp(self, avatar_id):
         pass
+        
+    def handle_get_avatar_details(self, di):
+        try:
+            avatar_id = di.get_uint32()
+        except:
+            return self.handle_disconnect()
+            
+        self.network.account_manager.handle_get_avatar_details(self, self.handle_avatar_details_resp,
+            avatar_id)
 
     def handle_avatar_details_resp(self, di):
         datagram = io.NetworkDatagram()
@@ -664,7 +781,11 @@ class Client(io.NetworkHandler):
             wish_name = di.get_string()
         except:
             return self.handle_disconnect()
+            
+        self.network.account_manager.handle_set_wishname(self, self.__handle_set_wishname_resp,
+            avatar_id, wish_name)
 
+    def __handle_set_wishname_resp(self, avatar_id, wish_name):
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_SET_WISHNAME_RESP)
         datagram.add_uint32(avatar_id)
@@ -719,6 +840,7 @@ class Client(io.NetworkHandler):
         self.network.handle_send_connection_datagram(datagram)
 
     def handle_set_zone_resp(self, di):
+        print "Setting zone!"
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_DONE_SET_ZONE_RESP)
         datagram.add_int16(di.get_uint32()) # why would the client identify a zone as an int16????
