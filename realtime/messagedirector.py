@@ -6,7 +6,7 @@
 
 import time
 
-from panda3d.core import DatagramIterator, Datagram
+from panda3d.core import Datagram
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
@@ -45,7 +45,7 @@ class Participant(io.NetworkHandler):
 
     def handle_post_removes(self):
         for datagram in self.network.interface.get_post_removes(self):
-            self.handle_datagram(DatagramIterator(datagram))
+            self.handle_datagram(io.NetworkDatagramIterator(datagram))
 
         self.network.interface.remove_post_remove(self)
 

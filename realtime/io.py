@@ -8,6 +8,7 @@ from panda3d.core import QueuedConnectionManager, QueuedConnectionListener, Queu
     ConnectionWriter, PointerToConnection, NetAddress, NetDatagram, DatagramIterator, Filename
 
 from panda3d.direct import DCFile, DCPacker
+from direct.distributed.PyDatagramIterator import PyDatagramIterator
 from realtime import types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
@@ -34,6 +35,13 @@ class NetworkDatagram(NetDatagram):
         self.add_uint64(types.CONTROL_MESSAGE)
         self.add_uint16(message_type)
         self.add_uint64(channel)
+
+class NetworkDatagramIterator(PyDatagramIterator):
+    """
+    A class that inherits from panda's C++ DatagramIterator buffer.
+    This class adds useful methods and functions for talking
+    to the OTP's internal cluster participants...
+    """
 
 class NetworkDatabaseInterface(object):
     notify = directNotify.newCategory('NetworkDatabaseInterface')
@@ -525,7 +533,7 @@ class NetworkConnector(NetworkManager):
         if not datagram.get_length():
             return
 
-        di = DatagramIterator(datagram)
+        di = NetworkDatagramIterator(datagram)
 
         if di.get_uint8() == 1:
             self.handle_datagram(di.get_uint64(), di.get_uint64(),
@@ -644,7 +652,7 @@ class NetworkHandler(NetworkManager):
             return task.cont
 
         datagram = self.__data.pop()
-        di = DatagramIterator(datagram)
+        di = NetworkDatagramIterator(datagram)
 
         if not di.get_remaining_size():
             return task.cont

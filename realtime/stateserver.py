@@ -186,11 +186,13 @@ class StateObject(object):
 
         # if we have an owner, tell them that we've sent all of the initial zone
         # objects in the new interest set...
-        if self._owner_id:
-            datagram = io.NetworkDatagram()
-            datagram.add_header(self._owner_id, self._parent_id, types.STATESERVER_OBJECT_SET_ZONE_RESP)
-            datagram.add_uint32(self._zone_id)
-            self._network.handle_send_connection_datagram(datagram)
+        if not self._owner_id:
+            return
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(self._owner_id, self._parent_id, types.STATESERVER_OBJECT_SET_ZONE_RESP)
+        datagram.add_uint32(self._zone_id)
+        self._network.handle_send_connection_datagram(datagram)
 
     def update_interests(self):
         for state_object in self._network.object_manager.state_objects.values():
