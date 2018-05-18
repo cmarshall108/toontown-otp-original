@@ -52,9 +52,9 @@ class StateObject(object):
         self._do_id = do_id
 
         self._old_parent_id = None
-        self._old_zone_id = None
-
         self._parent_id = parent_id
+
+        self._old_zone_id = None
         self._zone_id = zone_id
 
         self._old_owner_id = None
@@ -105,16 +105,24 @@ class StateObject(object):
         return self._old_parent_id
 
     @property
+    def parent_id(self):
+        return self._parent_id
+
+    @parent_id.setter
+    def parent_id(self, parent_id):
+        self._parent_id = parent_id
+
+    @property
     def old_zone_id(self):
         return self._old_zone_id
 
     @property
-    def parent_id(self):
-        return self._parent_id
-
-    @property
     def zone_id(self):
         return self._zone_id
+
+    @zone_id.setter
+    def zone_id(self, zone_id):
+        self._zone_id = zone_id
 
     @property
     def old_owner_id(self):
@@ -123,6 +131,10 @@ class StateObject(object):
     @property
     def owner_id(self):
         return self._owner_id
+
+    @owner_id.setter
+    def owner_id(self, owner_id):
+        self._owner_id = owner_id
 
     @property
     def dc_class(self):
