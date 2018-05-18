@@ -145,7 +145,7 @@ class StateObject(object):
         return self._has_other
 
     def append_required_data(self, datagram):
-        dc_packer = DCPacker()
+        field_packer = DCPacker()
         for index in self._required_fields:
             field = self._dc_class.get_field_by_index(index)
 
@@ -153,23 +153,25 @@ class StateObject(object):
                 self.notify.error('Failed to append required data for field: %s dclass: %s, unknown field' % (
                     field_name, self._dc_class.get_name()))
 
-            dc_packer.begin_pack(field)
+            field_packer.begin_pack(field)
 
             # TODO FIXME!
             if self._has_other:
-                dc_packer.pack_literal_value(self._required_fields[field.get_number()])
+                field_packer.pack_literal_value(self._required_fields[field.get_number()])
             else:
                 field.pack_args(field_packer, self._required_fields[field.get_number()])
 
-            dc_packer.end_pack()
+            field_packer.end_pack()
 
-        datagram.append_data(dc_packer.get_string())
+        datagram.append_data(field_packer.get_string())
 
     def handle_internal_datagram(self, sender, message_type, di):
         if message_type == types.STATESERVER_OBJECT_SET_OWNER:
             self.handle_set_owner(sender, di)
         elif message_type == types.STATESERVER_OBJECT_SET_ZONE:
             self.handle_set_zone(sender, di)
+        elif message_type == types.STATESERVER_OBJECT_UPDATE_FIELD:
+            self.handle_update_field(sender, di)
 
     def handle_set_owner(self, sender, di):
         owner_id = di.get_uint64()
@@ -183,9 +185,6 @@ class StateObject(object):
         self._old_zone_id = self._zone_id
         self._zone_id = zone_id
 
-        # update our interest set.
-        self.update_interests()
-
         # determine if the owner of this object is an AI or if the owner
         # is a client...
         if self._network.shard_manager.has_shard(self._owner_id):
@@ -193,38 +192,87 @@ class StateObject(object):
             # they should know about this because; we are only changing zones
             # and not parent interests....
             datagram = io.NetworkDatagram()
-            datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_CHANGING_LOCATION)
+            datagram.add_header(self._owner_id, self._network.channel,
+                types.STATESERVER_OBJECT_CHANGING_LOCATION)
+
             datagram.add_uint32(self._do_id)
             datagram.add_uint32(self._parent_id)
             datagram.add_uint32(self._zone_id)
             self._network.handle_send_connection_datagram(datagram)
         else:
+            # update our interest set.
+            self.update_interests()
+
             # if we have an owner, tell them that we've sent all of the initial zone
             # objects in the new interest set...
             datagram = io.NetworkDatagram()
-            datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_SET_ZONE_RESP)
+            datagram.add_header(self._owner_id, self._network.channel,
+                types.STATESERVER_OBJECT_SET_ZONE_RESP)
+
             datagram.add_uint32(self._zone_id)
             self._network.handle_send_connection_datagram(datagram)
 
-    def update_interests(self):
-        # if this object doesn't have an owner, then let's assume it's
-        # owned by an AI and not a owner specific object...
-        if self._network.shard_manager.has_shard(self._owner_id):
+    def handle_update_field(self, sender, di):
+        field_id = di.get_uint16()
+
+        if not di.get_remaining_bytes():
+            self.notify.warning('Failed to update field: %d dclass: %s, truncated datagram!' % (
+                field_id, self._dc_class.get_name()))
+
             return
 
-        for state_object in self._network.object_manager.state_objects.values():
-            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
-                self.handle_send_object_generate(state_object)
+        field = self._dc_class.get_field_by_index(field_id)
 
-    def handle_send_object_generate(self, state_object):
+        if not field:
+            self.notify.warning('Failed to update field: %d dclass: %s, unknown field!' % (
+                field_id, self._dc_class.get_name()))
+
+            return
+
+        # ensure the sender of this field update can actually send it...
+        if not self._network.shard_manager.has_shard(self._owner_id):
+
+            # check to see if the field can be sent by the client,
+            # and if the field can be recieved by the client...
+            if not field.is_clsend() or not field.is_airecv():
+                return
+
+            # ensure this field is not a bogus field...
+            if field.is_bogus_field():
+                return
+
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
-        datagram.add_uint64(state_object.do_id)
-        datagram.add_uint64(state_object.parent_id)
-        datagram.add_uint32(state_object.zone_id)
-        datagram.add_uint16(state_object.dc_class.get_number())
-        state_object.append_required_data(datagram)
+        datagram.add_header(self._owner_id, self._do_id,
+            types.STATESERVER_OBJECT_UPDATE_FIELD)
+
+        datagram.add_uint16(field.get_number())
+        datagram.append_data(di.get_remaining_bytes())
         self._network.handle_send_connection_datagram(datagram)
+
+    def update_interests(self):
+        for state_object in self._network.object_manager.state_objects.values():
+
+            # do not send our own object to be generated in the zone,
+            # since this is a message for a client owned toon object...
+            if state_object == self:
+                continue
+
+            # ensure this object's interest is within the client's owned object's
+            # interest scope, if so; then send generate for the object...
+            if state_object.parent_id != self._parent_id and state_object.zone_id != self._zone_id:
+                continue
+
+            datagram = io.NetworkDatagram()
+            datagram.add_header(self._owner_id, self._network.channel,
+                types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
+
+            datagram.add_uint64(state_object.do_id)
+            datagram.add_uint64(state_object.parent_id)
+            datagram.add_uint32(state_object.zone_id)
+            datagram.add_uint16(state_object.dc_class.get_number())
+
+            state_object.append_required_data(datagram)
+            self._network.handle_send_connection_datagram(datagram)
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')
@@ -303,7 +351,9 @@ class StateServer(io.NetworkConnector):
 
     def handle_get_shard_list(self, sender, di):
         datagram = io.NetworkDatagram()
-        datagram.add_header(sender, self.channel, types.STATESERVER_GET_SHARD_ALL_RESP)
+        datagram.add_header(sender, self.channel,
+            types.STATESERVER_GET_SHARD_ALL_RESP)
+
         datagram.add_uint16(len(self._shard_manager.shards))
 
         for shard in self._shard_manager.get_shards():
@@ -358,9 +408,12 @@ class StateServer(io.NetworkConnector):
         # tell the AI which has been chosen to generate the avatar on,
         # that the avatar has been created and the client is awaiting it's response...
         datagram = io.NetworkDatagram()
-        datagram.add_header(parent_id, sender, types.STATESERVER_SET_AVATAR_RESP)
+        datagram.add_header(parent_id, sender,
+            types.STATESERVER_SET_AVATAR_RESP)
+
         datagram.add_uint32(do_id)
         datagram.add_uint32(parent_id)
         datagram.add_uint32(zone_id)
+
         avatar_object.append_required_data(datagram)
         self.handle_send_connection_datagram(datagram)

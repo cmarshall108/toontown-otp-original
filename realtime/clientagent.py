@@ -9,6 +9,7 @@ import time
 import semidbm
 
 from panda3d.core import UniqueIdAllocator
+from panda3d.direct import DCPacker
 from realtime import io, types
 from direct.directnotify.DirectNotifyGlobal import directNotify
 from direct.fsm.FSM import FSM
@@ -174,7 +175,7 @@ class LoadAccountFSM(ClientOperation):
 
         # TODO: FIXME!
         self._client.channel_alias = account_id
-        self._client.register_for_channel(account_id)
+        #self._client.register_for_channel(account_id)
 
         # we're all done.
         self.ignoreAll()
@@ -382,7 +383,7 @@ class LoadAvatarFSM(ClientOperation):
 
         # TODO: FIXME!
         self._client.channel_alias = self._avatar_id
-        self._client.register_for_channel(self._avatar_id)
+        #self._client.register_for_channel(self._avatar_id)
 
         datagram = io.NetworkDatagram()
         datagram.add_header(self._avatar_id, self._client.channel,
@@ -871,12 +872,13 @@ class Client(io.NetworkHandler):
             return
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._channel_alias, self.channel, types.STATESERVER_OBJECT_SET_ZONE)
+        datagram.add_header(self._channel_alias, self.channel,
+            types.STATESERVER_OBJECT_SET_ZONE)
+
         datagram.add_uint32(zone_id)
         self.network.handle_send_connection_datagram(datagram)
 
     def handle_set_zone_resp(self, di):
-        print "Setting zone!"
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_DONE_SET_ZONE_RESP)
         datagram.add_int16(di.get_uint32()) # why would the client identify a zone as an int16????
@@ -917,6 +919,14 @@ class Client(io.NetworkHandler):
                     field_id, do_id))
 
             return
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(do_id, self._channel,
+            types.STATESERVER_OBJECT_UPDATE_FIELD)
+
+        datagram.add_uint16(field_id)
+        datagram.append_data(di.get_remaining_bytes())
+        self.network.handle_send_connection_datagram(datagram)
 
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):
