@@ -1,0 +1,17 @@
+QuietZone = 1
+UberZone = 2
+DonaldsDock = 1000
+ToontownCentral = 2000
+TheBrrrgh = 3000
+MinniesMelodyland = 4000
+DaisyGardens = 5000
+ConstructionZone = 6000
+FunnyFarm = 7000
+GoofyStadium = 8000
+DonaldsDreamland = 9000
+BossbotHQ = 10000
+SellbotHQ = 11000
+CashbotHQ = 12000
+LawbotHQ = 13000
+Tutorial = 20000
+MyEstate = 30000

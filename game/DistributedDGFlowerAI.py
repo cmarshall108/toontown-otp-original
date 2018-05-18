@@ -23,8 +23,7 @@ class DistributedDGFlowerAI(DistributedObjectAI):
 		self.height = height
 
 	def d_setHeight(self, height):
-		self.sendUpdate('setHeight', [
-			height])
+		self.sendUpdate('setHeight', [height])
 
 	def b_setHeight(self, height):
 		self.setHeight(height)

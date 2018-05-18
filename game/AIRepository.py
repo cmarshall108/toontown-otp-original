@@ -5,6 +5,7 @@ from direct.directnotify import DirectNotifyGlobal
 from game.OtpDoGlobals import *
 from realtime.types import *
 from game.TimeManagerAI import TimeManagerAI
+from game.TTHoodAI import TTHoodAI
 
 class AIRepository(OTPInternalRepository):
     notify = DirectNotifyGlobal.directNotify.newCategory('AIRepository')
@@ -62,4 +63,7 @@ class AIRepository(OTPInternalRepository):
         self.timeManager.generateWithRequired(OTP_ZONE_ID_OLD_QUIET_ZONE)
 
     def createZones(self):
-        pass
+        self.hoods.append(TTHoodAI(self))
+
+        for hood in self.hoods:
+            hood.createObjects()

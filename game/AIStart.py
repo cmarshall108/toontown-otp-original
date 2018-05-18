@@ -5,6 +5,7 @@ from pandac.PandaModules import *
 if __debug__:
     loadPrcFileData('', 'window-type none')
     loadPrcFile('config/general.prc')
+    loadPrcFile('config/server.prc')
 
 from direct.directbase.DirectStart import *
 
