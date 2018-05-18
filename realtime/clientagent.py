@@ -700,7 +700,10 @@ class Client(io.NetworkHandler):
         self.handle_send_datagram(datagram)
 
     def handle_set_shard(self, di):
-        shard_id = di.get_uint32()
+        try:
+            shard_id = di.get_uint32()
+        except:
+            return self.handle_disconnect()
 
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GET_STATE_RESP)
@@ -742,8 +745,14 @@ class Client(io.NetworkHandler):
         self.handle_send_datagram(datagram)
 
     def handle_object_update_field(self, di):
-        do_id = di.get_uint32()
-        field_id = di.get_uint16()
+        try:
+            do_id = di.get_uint32()
+            field_id = di.get_uint16()
+        except:
+            return self.handle_disconnect()
+        
+        if not di.get_remaining_size():
+            return
 
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):
