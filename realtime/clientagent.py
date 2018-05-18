@@ -804,9 +804,10 @@ class ClientAgent(io.NetworkListener, io.NetworkConnector):
         io.NetworkListener.__init__(self, address, port, Client)
         io.NetworkConnector.__init__(self, dc_loader, connect_address, connect_port, channel)
 
-        self._channel_allocator = UniqueIdAllocator(config.GetInt('clientagent-min-channels', 1000000000),
-            config.GetInt('clientagent-max-channels', 1009999999))
+        min_channels = config.GetInt('clientagent-min-channels', 1000000000)
+        max_channels = config.GetInt('clientagent-max-channels', 1009999999)
 
+        self._channel_allocator = UniqueIdAllocator(min_channels, max_channels - 1)
         self._server_version = config.GetString('clientagent-version', 'no-version')
 
         self._database_interface = io.NetworkDatabaseInterface(self)
