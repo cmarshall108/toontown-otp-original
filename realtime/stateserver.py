@@ -175,7 +175,7 @@ class StateObject(object):
         # they should know about this because; we are only changing zones
         # and not parent interests....
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._do_id, self._parent_id, types.STATESERVER_OBJECT_CHANGING_LOCATION)
+        datagram.add_header(self._parent_id, self._network.channel, types.STATESERVER_OBJECT_CHANGING_LOCATION)
         datagram.add_uint32(self._do_id)
         datagram.add_uint32(self._parent_id)
         datagram.add_uint32(self._zone_id)
@@ -190,7 +190,7 @@ class StateObject(object):
             return
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._owner_id, self._parent_id, types.STATESERVER_OBJECT_SET_ZONE_RESP)
+        datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_SET_ZONE_RESP)
         datagram.add_uint32(self._zone_id)
         self._network.handle_send_connection_datagram(datagram)
 
@@ -206,7 +206,7 @@ class StateObject(object):
             return
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._do_id, self._parent_id, types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
+        datagram.add_header(self._owner_id, self._network.channel, types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
         datagram.add_uint64(state_object.do_id)
         datagram.add_uint64(state_object.parent_id)
         datagram.add_uint32(state_object.zone_id)
