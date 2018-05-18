@@ -59,7 +59,7 @@ class AIRepository(OTPInternalRepository):
 
     def createGlobals(self):
         self.timeManager = TimeManagerAI(self)
-        self.timeManager.generateWithRequired(3)
+        self.timeManager.generateWithRequired(OTP_ZONE_ID_OLD_QUIET_ZONE)
 
     def createZones(self):
         pass

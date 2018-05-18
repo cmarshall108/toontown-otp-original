@@ -173,7 +173,6 @@ class LoadAccountFSM(ClientOperation):
         self._client.authenticated = True
 
         # TODO: FIXME!
-        # register the account channel
         self._client.channel_alias = account_id
         self._client.register_for_channel(account_id)
 
@@ -380,6 +379,17 @@ class LoadAvatarFSM(ClientOperation):
         datagram.add_uint32(self._avatar_id)
         self.manager.network.handle_send_connection_datagram(datagram)
 
+        # TODO: FIXME!
+        self._client.channel_alias = self._avatar_id
+        self._client.register_for_channel(self._avatar_id)
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(self._avatar_id, self._client.channel,
+            types.STATESERVER_OBJECT_SET_OWNER)
+
+        datagram.add_uint64(self._client.channel)
+        self.manager.network.handle_send_connection_datagram(datagram)
+
     def exitActivate(self):
         pass
 
@@ -511,6 +521,14 @@ class Client(io.NetworkHandler):
             self.handle_set_wishname(di)
         elif message_type == types.CLIENT_SET_NAME_PATTERN:
             self.handle_set_name_pattern(di)
+        elif message_type == types.CLIENT_GET_FRIEND_LIST:
+            pass
+        elif message_type == types.CLIENT_SET_SHARD:
+            self.handle_set_shard(di)
+        elif message_type == types.CLIENT_SET_ZONE:
+            self.handle_set_zone(di)
+        elif message_type == types.CLIENT_OBJECT_UPDATE_FIELD:
+            self.handle_object_update_field(di)
         else:
             self.handle_send_disconnect(types.CLIENT_DISCONNECT_INVALID_MSGTYPE, 'Unknown datagram: %d from channel: %d!' % (
                 message_type, self.channel))
@@ -522,6 +540,12 @@ class Client(io.NetworkHandler):
             self.handle_get_shard_list_resp(di)
         elif message_type == types.CLIENT_GET_AVATAR_DETAILS_RESP:
             self.handle_avatar_details_resp(di)
+        elif message_type == types.STATESERVER_OBJECT_SET_ZONE_RESP:
+            self.handle_set_zone_resp(di)
+        elif message_type == types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED:
+            self.handle_object_enter_location(False, di)
+        elif message_type == types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED_OTHER:
+            self.handle_object_enter_location(True, di)
         else:
             self.network.database_interface.handle_datagram(message_type, di)
 
@@ -640,17 +664,17 @@ class Client(io.NetworkHandler):
         try:
             avatar_id = di.get_uint32()
             wish_name = di.get_string()
-
-            datagram = io.NetworkDatagram()
-            datagram.add_uint16(types.CLIENT_SET_WISHNAME_RESP)
-            datagram.add_uint32(avatar_id)
-            datagram.add_uint16(0)
-            datagram.add_string('')
-            datagram.add_string(wish_name)
-            datagram.add_string('')
-            self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
+
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_SET_WISHNAME_RESP)
+        datagram.add_uint32(avatar_id)
+        datagram.add_uint16(0)
+        datagram.add_string('')
+        datagram.add_string(wish_name)
+        datagram.add_string('')
+        self.handle_send_datagram(datagram)
 
     def handle_set_name_pattern(self, di):
         try:
@@ -665,15 +689,61 @@ class Client(io.NetworkHandler):
             name_flags.append(di.get_uint16())
             name_indices.append(di.get_uint16())
             name_flags.append(di.get_uint16())
-
-            #TODO: Actually parse and set the name pattern name.
-            datagram = io.NetworkDatagram()
-            datagram.add_uint16(types.CLIENT_SET_NAME_PATTERN_ANSWER)
-            datagram.add_uint32(avatar_id)
-            datagram.add_uint8(0)
-            self.handle_send_datagram(datagram)
         except:
             return self.handle_disconnect()
+
+        #TODO: Actually parse and set the name pattern name.
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_SET_NAME_PATTERN_ANSWER)
+        datagram.add_uint32(avatar_id)
+        datagram.add_uint8(0)
+        self.handle_send_datagram(datagram)
+
+    def handle_set_shard(self, di):
+        shard_id = di.get_uint32()
+
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_GET_STATE_RESP)
+        self.handle_send_datagram(datagram)
+
+    def handle_set_zone(self, di):
+        try:
+            zone_id = di.get_uint16()
+        except:
+            return self.handle_disconnect()
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(self._channel_alias, self.channel, types.STATESERVER_OBJECT_SET_ZONE)
+        datagram.add_uint32(zone_id)
+        self.network.handle_send_connection_datagram(datagram)
+
+    def handle_set_zone_resp(self, di):
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_DONE_SET_ZONE_RESP)
+        datagram.add_int16(di.get_uint32()) # why would the client identify a zone as an int16????
+        self.handle_send_datagram(datagram)
+
+    def handle_object_enter_location(self, has_other, di):
+        do_id = di.get_uint64()
+        parent_id = di.get_uint64()
+        zone_id = di.get_uint32()
+        dc_id = di.get_uint16()
+
+        datagram = io.NetworkDatagram()
+
+        if has_other:
+            datagram.add_uint16(types.CLIENT_CREATE_OBJECT_REQUIRED_OTHER)
+        else:
+            datagram.add_uint16(types.CLIENT_CREATE_OBJECT_REQUIRED)
+
+        datagram.add_uint16(dc_id)
+        datagram.add_uint_32(do_id)
+        datagram.append_data(di.get_remaining_bytes())
+        self.handle_send_datagram(datagram)
+
+    def handle_object_update_field(self, di):
+        do_id = di.get_uint32()
+        field_id = di.get_uint16()
 
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):

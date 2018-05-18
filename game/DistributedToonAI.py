@@ -29,7 +29,7 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 		self.interface = ''
 		self.accountName = ''
 		self.lastHood = 0
-		self.tutorialAck = 0
+		self.tutorialAck = 1
 		self.maxClothes = 10
 		self.clothesTopsList = []
 		self.clothesBottomsList = []

@@ -474,7 +474,7 @@ class OTPInternalRepository(ConnectionRepository):
 
         # Now for generation:
         do.generate()
-        do.updateAllRequiredFields(dclass, di)
+        #do.updateAllRequiredFields(dclass, di)
 
         # pack all of the avatar's required fields and send them
         # to the client channel as the avatar details response...

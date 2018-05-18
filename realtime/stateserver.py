@@ -50,22 +50,49 @@ class StateObject(object):
     def __init__(self, network, do_id, parent_id, zone_id, dc_class, has_other, di):
         self._network = network
         self._do_id = do_id
+
+        self._old_parent_id = None
+        self._old_zone_id = None
+
         self._parent_id = parent_id
         self._zone_id = zone_id
+
+        self._old_owner_id = None
+        self._owner_id = None
+
         self._dc_class = dc_class
         self._has_other = has_other
         self._required_fields = {}
 
-        for index in xrange(self._dc_class.get_num_fields()):
-            field = self._dc_class.get_field_by_index(index)
+        # TODO FIXME: properly retrieve and activate avatar fields from the database,
+        # field data in which is sent by the cliet agent on activation...
+        if self._has_other:
+            for index in xrange(self._dc_class.get_num_inherited_fields()):
+                field = self._dc_class.get_inherited_field(index)
 
-            if not field:
-                continue
+                if not field.as_atomic_field() or not field.is_required():
+                    continue
 
-            if not field.as_atomic_field() or not field.is_required():
-                continue
+                self._required_fields[field.get_number()] = field.get_default_value()
+        else:
+            field_packer = DCPacker()
+            field_packer.set_unpack_data(di.get_remaining_bytes())
 
-            self._required_fields[field.get_number()] = field.get_default_value()
+            for field_index in xrange(self._dc_class.get_num_inherited_fields()):
+                field = self._dc_class.get_inherited_field(field_index)
+
+                if not field:
+                    self.notify.error('Failed to unpack field: %d dclass: %s, unknown field!' % (
+                        field_index, self._dc_class.get_name()))
+
+                if not field.as_atomic_field() or not field.is_required():
+                    continue
+
+                field_packer.begin_unpack(field)
+                field_args = field.unpack_args(field_packer)
+                field_packer.end_unpack()
+
+                self._required_fields[field.get_number()] = field_args
 
         self._network.register_for_channel(self._do_id)
 
@@ -74,12 +101,28 @@ class StateObject(object):
         return self._do_id
 
     @property
+    def old_parent_id(self):
+        return self._old_parent_id
+
+    @property
+    def old_zone_id(self):
+        return self._old_zone_id
+
+    @property
     def parent_id(self):
         return self._parent_id
 
     @property
     def zone_id(self):
         return self._zone_id
+
+    @property
+    def old_owner_id(self):
+        return self._old_owner_id
+
+    @property
+    def owner_id(self):
+        return self._owner_id
 
     @property
     def dc_class(self):
@@ -99,16 +142,85 @@ class StateObject(object):
                     field_name, self._dc_class.get_name()))
 
             dc_packer.begin_pack(field)
-            dc_packer.pack_literal_value(self._required_fields[index])
+
+            # TODO FIXME!
+            if self._has_other:
+                dc_packer.pack_literal_value(self._required_fields[field.get_number()])
+            else:
+                field.pack_args(field_packer, self._required_fields[field.get_number()])
+
             dc_packer.end_pack()
 
         datagram.append_data(dc_packer.get_string())
+
+    def handle_internal_datagram(self, sender, message_type, di):
+        if message_type == types.STATESERVER_OBJECT_SET_OWNER:
+            self.handle_set_owner(sender, di)
+        elif message_type == types.STATESERVER_OBJECT_SET_ZONE:
+            self.handle_set_zone(sender, di)
+
+    def handle_set_owner(self, sender, di):
+        owner_id = di.get_uint64()
+
+        self._old_owner_id = self._owner_id
+        self._owner_id = owner_id
+
+    def handle_set_zone(self, sender, di):
+        zone_id = di.get_uint32()
+
+        self._old_zone_id = self._zone_id
+        self._zone_id = zone_id
+
+        # tell our parent that we are moving zones under them,
+        # they should know about this because; we are only changing zones
+        # and not parent interests....
+        datagram = io.NetworkDatagram()
+        datagram.add_header(self._do_id, self._parent_id, types.STATESERVER_OBJECT_CHANGING_LOCATION)
+        datagram.add_uint32(self._do_id)
+        datagram.add_uint32(self._parent_id)
+        datagram.add_uint32(self._zone_id)
+        self._network.handle_send_connection_datagram(datagram)
+
+        # update our interest set.
+        self.update_interests()
+
+        # if we have an owner, tell them that we've sent all of the initial zone
+        # objects in the new interest set...
+        if self._owner_id:
+            datagram = io.NetworkDatagram()
+            datagram.add_header(self._owner_id, self._parent_id, types.STATESERVER_OBJECT_SET_ZONE_RESP)
+            datagram.add_uint32(self._zone_id)
+            self._network.handle_send_connection_datagram(datagram)
+
+    def update_interests(self):
+        for state_object in self._network.object_manager.state_objects.values():
+            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
+                self.handle_send_object_generate(state_object)
+
+    def handle_send_object_generate(self, state_object):
+        # if this object doesn't have an owner, then let's assume it's
+        # owned by an AI and not a owner specific object...
+        if not self._owner_id:
+            return
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(self._do_id, self._parent_id, types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
+        datagram.add_uint64(state_object.do_id)
+        datagram.add_uint64(state_object.parent_id)
+        datagram.add_uint32(state_object.zone_id)
+        datagram.add_uint16(state_object.dc_class.get_number())
+        state_object.append_required_data(datagram)
+        self._network.handle_send_connection_datagram(datagram)
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')
 
     def __init__(self):
         self._state_objects = {}
+
+    @property
+    def state_objects(self):
+        return self._state_objects
 
     def has_state_object(self, do_id):
         return do_id in self._state_objects
@@ -137,6 +249,14 @@ class StateServer(io.NetworkConnector):
         self._shard_manager = ShardManager()
         self._object_manager = StateObjectManager()
 
+    @property
+    def shard_manager(self):
+        return self._shard_manager
+
+    @property
+    def object_manager(self):
+        return self._object_manager
+
     def handle_datagram(self, channel, sender, message_type, di):
         if message_type == types.STATESERVER_ADD_SHARD:
             self.handle_add_shard(sender, di)
@@ -145,11 +265,21 @@ class StateServer(io.NetworkConnector):
         elif message_type == types.STATESERVER_GET_SHARD_ALL:
             self.handle_get_shard_list(sender, di)
         elif message_type == types.STATESERVER_OBJECT_GENERATE_WITH_REQUIRED:
-            self.handle_generate(False, dgi)
+            self.handle_generate(False, di)
         elif message_type == types.STATESERVER_OBJECT_GENERATE_WITH_REQUIRED_OTHER:
-            self.handle_generate(True, dgi)
+            self.handle_generate(True, di)
         elif message_type == types.STATESERVER_SET_AVATAR:
             self.handle_set_avatar(sender, di)
+        else:
+            state_object = self._object_manager.get_state_object(channel)
+
+            if not state_object:
+                self.notify.warning('Received an unknown message type: %d from channel: %d!' % (
+                    message_type, sender))
+
+                return
+
+            state_object.handle_internal_datagram(sender, message_type, di)
 
     def handle_add_shard(self, sender, di):
         self._shard_manager.add_shard(sender, di.getString(), di.get_uint32())
@@ -170,10 +300,10 @@ class StateServer(io.NetworkConnector):
         self.handle_send_connection_datagram(datagram)
 
     def handle_generate(self, has_other, di):
-        do_id = dgi.get_uint32()
-        parent_id = dgi.get_uint32()
-        zone_id = dgi.get_uint32()
-        dc_id = dgi.get_uint16()
+        do_id = di.get_uint32()
+        parent_id = di.get_uint32()
+        zone_id = di.get_uint32()
+        dc_id = di.get_uint16()
 
         if self._object_manager.has_state_object(do_id):
             self.notify.debug("Failed to generate an already existing object with do_id: %d!" % (
