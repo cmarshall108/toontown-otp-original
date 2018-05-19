@@ -84,27 +84,27 @@ class ClientOperationManager(object):
         return self._channel2fsm.get(channel)
 
     def run_operation(self, fsm, client, callback, *args, **kwargs):
-        if self.has_fsm(client.channel):
+        if self.has_fsm(client.allocated_channel):
             self.notify.warning('Cannot run operation: %s for channel %d, operation already running!' % (
-                fsm.__name__, client.channel))
+                fsm.__name__, client.allocated_channel))
 
             return None
 
         operation = fsm(self, client, callback, *args, **kwargs)
-        self.add_fsm(client.channel, operation)
+        self.add_fsm(client.allocated_channel, operation)
         return operation
 
     def stop_operation(self, client):
-        if not self.has_fsm(client.channel):
+        if not self.has_fsm(client.allocated_channel):
             self.notify.warning('Cannot stop operation for channel %d, unknown operation!' % (
                 client.channel))
 
             return
 
-        operation = self.get_fsm(client.channel)
+        operation = self.get_fsm(client.allocated_channel)
         operation.demand('Off')
 
-        self.remove_fsm(client.channel)
+        self.remove_fsm(client.allocated_channel)
 
 class LoadAccountFSM(ClientOperation):
     notify = directNotify.newCategory('LoadAccountFSM')
@@ -192,7 +192,7 @@ class LoadAccountFSM(ClientOperation):
 
         # we're all done.
         self.ignoreAll()
-        self.manager.stop_operation(self._client)
+        self.manager.stop_operation(self.client)
 
     def exitSetAccount(self):
         pass
@@ -304,7 +304,7 @@ class RetrieveAvatarsFSM(ClientOperation):
 
         # we're all done.
         self.ignoreAll()
-        self.manager.stop_operation(self._client)
+        self.manager.stop_operation(self.client)
 
     def exitSetAvatars(self):
         pass
@@ -359,7 +359,7 @@ class CreateAvatarFSM(ClientOperation):
 
         # We're all done
         self.ignoreAll()
-        self.manager.stop_operation(self._client)
+        self.manager.stop_operation(self.client)
 
     def exitCreate(self):
         pass
@@ -415,7 +415,7 @@ class LoadAvatarFSM(ClientOperation):
 
         # we're all done.
         self.ignoreAll()
-        self.manager.stop_operation(self._client)
+        self.manager.stop_operation(self.client)
 
     def exitActivate(self):
         pass
@@ -462,7 +462,7 @@ class SetNameFSM(ClientOperation):
 
         # We're all done
         self.ignoreAll()
-        self.manager.stop_operation(self._client)
+        self.manager.stop_operation(self.client)
 
     def exitSetName(self):
         pass
@@ -500,7 +500,7 @@ class GetAvatarDetailsFSM(ClientOperation):
 
         # We're all done
         self.ignoreAll()
-        self.manager.stop_operation(self._client)
+        self.manager.stop_operation(self.client)
 
     def exitSendDetails(self):
         pass

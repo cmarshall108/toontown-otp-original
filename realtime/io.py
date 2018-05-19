@@ -628,6 +628,9 @@ class NetworkHandler(NetworkManager):
 
     @channel.setter
     def channel(self, channel):
+        if not self._channel:
+            self._allocated_channel = channel
+
         self._channel = channel
 
     @property
