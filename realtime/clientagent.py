@@ -995,13 +995,6 @@ class Client(io.NetworkHandler):
 
             return
 
-        if not di.get_remaining_size():
-            self.handle_send_disconnect(types.CLIENT_DISCONNECT_TRUNCATED_DATAGRAM,
-                'Cannot update field: %d for object: %d, truncated datagram!' % (
-                    field_id, do_id))
-
-            return
-
         datagram = io.NetworkDatagram()
         datagram.add_header(do_id, self.channel,
             types.STATESERVER_OBJECT_UPDATE_FIELD)

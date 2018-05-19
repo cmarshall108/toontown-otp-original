@@ -51,14 +51,14 @@ class StateObject(object):
         self._network = network
         self._do_id = do_id
 
+        self._old_owner_id = 0
+        self._owner_id = 0
+
         self._old_parent_id = 0
         self._parent_id = parent_id
 
         self._old_zone_id = 0
         self._zone_id = zone_id
-
-        self._old_owner_id = 0
-        self._owner_id = 0
 
         self._dc_class = dc_class
         self._has_other = has_other
@@ -92,6 +92,22 @@ class StateObject(object):
         return self._do_id
 
     @property
+    def old_owner_id(self):
+        return self._old_owner_id
+
+    @old_owner_id.setter
+    def old_owner_id(self, old_owner_id):
+        self._old_owner_id = old_owner_id
+
+    @property
+    def owner_id(self):
+        return self._owner_id
+
+    @owner_id.setter
+    def owner_id(self, owner_id):
+        self._owner_id = owner_id
+
+    @property
     def old_parent_id(self):
         return self._old_parent_id
 
@@ -114,18 +130,6 @@ class StateObject(object):
     @zone_id.setter
     def zone_id(self, zone_id):
         self._zone_id = zone_id
-
-    @property
-    def old_owner_id(self):
-        return self._old_owner_id
-
-    @property
-    def owner_id(self):
-        return self._owner_id
-
-    @owner_id.setter
-    def owner_id(self, owner_id):
-        self._owner_id = owner_id
 
     @property
     def dc_class(self):
@@ -203,17 +207,7 @@ class StateObject(object):
 
     def handle_update_field(self, sender, di):
         field_id = di.get_uint16()
-
-        if not di.get_remaining_bytes():
-            self.notify.warning('Failed to update field: %d dclass: %s, truncated datagram!' % (
-                field_id, self._dc_class.get_name()))
-
-            return
-
-        if field_id > self._dc_class.get_num_inherited_fields():
-            field = self._dc_class.get_field_by_index(field_id)
-        else:
-            field = self._dc_class.get_inherited_field(field_id)
+        field = self._dc_class.get_inherited_field(field_id)
 
         if not field:
             self.notify.warning('Failed to update field: %d dclass: %s, unknown field!' % (
@@ -223,62 +217,46 @@ class StateObject(object):
 
         # ensure this field is not a bogus field...
         if field.is_bogus_field():
-            self.notify.warning('Cannot handle field update for field: %d dclass: %s, field is bogus!' % (
+            self.notify.debug('Cannot handle field update for field: %s dclass: %s, field is bogus!' % (
                 field.get_name(), self._dc_class.get_name()))
 
             return
 
-        field_packer = DCPacker()
-        field_packer.set_unpack_data(di.get_remaining_bytes())
-        field_packer.begin_unpack(field)
-        field_args = field.unpack_args(field_packer)
-        field_packer.end_unpack()
-
-        # check to see if the field is a required field or is in the alternative
-        # other field dictionary, if so; update the field with the new value...
-        if field.as_atomic_field() and field.is_required():
-
-            # check to see if the field is ram, a non-persistant
-            # field value that is removed on object deletion...
-            if field.is_ram():
-                self._required_fields[field.get_number()] = field_args
-
-        # ensure the sender of this field update can actually send it...
-        if not self._network.shard_manager.has_shard(self._owner_id):
-            # check to see if the field can be sent by the client,
-            # and if the field can be recieved by the client...
-            if field.is_ownsend() and field.is_broadcast():
+        if not self._network.shard_manager.has_shard(sender):
+            if field.is_ownsend():
                 if sender != self._owner_id:
-                    self.notify.debug('Cannot handle field update for field: %s dclass: %s, field only sendable by owner: %d!' % (
-                        field.get_name(), self._dc_class.get_name(), self._owner_id))
+                    self.notify.warning('Cannot handle field update for field: %s dclass: %s, field not sendable!' % (
+                        field.get_name(), self._dc_class.get_name()))
 
                     return
+            else:
+                if not field.is_clsend():
+                    self.notify.warning('Cannot handle field update for field: %s dclass: %s, field not sendable!' % (
+                        field.get_name(), self._dc_class.get_name()))
 
-                # TODO: implement field broadcasting!
-                return
-            elif not field.is_clsend():
-                self.notify.warning('Cannot handle field update for field: %s dclass: %s, field not sendable!' % (
-                    field.get_name(), self._dc_class.get_name()))
-
-                return
+                    return
         else:
-            # check to see if this field update is to broadcast to all other clients,
-            # and will not be forwarded back to the AI...
-            if field.is_broadcast() and field.is_ram():
-                return
-
-        field_packer = DCPacker()
-        field_packer.raw_pack_uint16(field_id)
-        field_packer.begin_pack(field)
-        field.pack_args(field_packer, field_args)
-        field_packer.end_pack()
+            return
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._owner_id, sender,
-            types.STATESERVER_OBJECT_UPDATE_FIELD)
+
+        if not self._network.shard_manager.has_shard(sender):
+            datagram.add_header(self._parent_id, sender,
+                types.STATESERVER_OBJECT_UPDATE_FIELD)
+        else:
+            datagram.add_header(self._owner_id, sender,
+                types.STATESERVER_OBJECT_UPDATE_FIELD)
 
         datagram.add_uint32(self._do_id)
         datagram.add_uint16(field.get_number())
+
+        field_packer = DCPacker()
+        field_packer.begin_pack(field)
+
+        if di.get_remaining_size() > 0:
+            field_packer.pack_literal_value(di.get_remaining_bytes())
+
+        field_packer.end_pack()
 
         datagram.append_data(field_packer.get_string())
         self._network.handle_send_connection_datagram(datagram)

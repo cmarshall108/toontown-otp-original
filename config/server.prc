@@ -1,6 +1,6 @@
 # Hoods:
 want-toontown-central #t
-want-donalds-dock #t
+want-donalds-dock #f
 
 # Hood Objects:
 want-classic-chars #t

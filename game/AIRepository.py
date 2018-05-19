@@ -4,6 +4,7 @@ from OTPInternalRepository import OTPInternalRepository
 from direct.directnotify import DirectNotifyGlobal
 from game.OtpDoGlobals import *
 from realtime.types import *
+from direct.distributed.AIZoneData import AIZoneDataStore
 from game.TimeManagerAI import TimeManagerAI
 from game.TTHoodAI import TTHoodAI
 from game.DDHoodAI import DDHoodAI
@@ -16,6 +17,8 @@ class AIRepository(OTPInternalRepository):
 
     def __init__(self, baseChannel, serverId, districtName, dcFileNames):
         OTPInternalRepository.__init__(self, baseChannel, serverId, dcFileNames=dcFileNames, dcSuffix='AI')
+
+        self.zoneDataStore = AIZoneDataStore()
 
         self.districtName = districtName
         self.districtPopulation = 0
@@ -32,6 +35,12 @@ class AIRepository(OTPInternalRepository):
 
     def getAccountIdFromSender(self):
         return (self.getMsgSender() >> 32) & 0xFFFFFFFF
+
+    def getZoneDataStore(self):
+        return self.zoneDataStore
+
+    def getAvatarExitEvent(self, avId):
+        return 'distObjDelete-%d' % avId
 
     def allocateZone(self):
         return self.zoneAllocator.allocate()
