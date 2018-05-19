@@ -11,6 +11,7 @@ import semidbm
 from panda3d.core import UniqueIdAllocator
 from panda3d.direct import DCPacker
 from realtime import io, types
+from game.OtpDoGlobals import *
 from direct.directnotify.DirectNotifyGlobal import directNotify
 from direct.fsm.FSM import FSM
 
@@ -675,6 +676,8 @@ class Client(io.NetworkHandler):
             self.handle_object_enter_location(False, di)
         elif message_type == types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED_OTHER:
             self.handle_object_enter_location(True, di)
+        elif message_type == types.STATESERVER_OBJECT_DELETE_RAM:
+            self.handle_object_delete_ram(di)
         elif message_type == types.STATESERVER_OBJECT_UPDATE_FIELD:
             self.handle_object_update_field_resp(di)
         else:
@@ -899,12 +902,29 @@ class Client(io.NetworkHandler):
         self.network.handle_send_connection_datagram(datagram)
 
     def handle_set_zone_resp(self, di):
+        old_zone_id = di.get_uint32()
         zone_id = di.get_uint32()
 
         datagram = io.NetworkDatagram()
-        datagram.add_uint16(types.CLIENT_DONE_SET_ZONE_RESP)
-        datagram.add_int16(zone_id) # why would the client identify a zone as an int16????
+
+        if not old_zone_id:
+            datagram.add_uint16(types.CLIENT_DONE_SET_ZONE_RESP)
+        else:
+            datagram.add_uint16(types.CLIENT_GET_STATE_RESP)
+            datagram.pad_bytes(12) # TODO: Why does the client even consider this????
+
+        datagram.add_uint16(zone_id)
         self.handle_send_datagram(datagram)
+
+        # TODO FIXME!
+        # we must send another zone message for the quitezone
+        # wait for zone complete state; idk why Disney did it this way,
+        # but oh well...
+        if old_zone_id and zone_id != OTP_ZONE_ID_OLD_QUIET_ZONE:
+            datagram = io.NetworkDatagram()
+            datagram.add_uint16(types.CLIENT_DONE_SET_ZONE_RESP)
+            datagram.add_uint16(zone_id)
+            self.handle_send_datagram(datagram)
 
     def handle_object_enter_location(self, has_other, di):
         do_id = di.get_uint64()
@@ -922,6 +942,14 @@ class Client(io.NetworkHandler):
         datagram.add_uint16(dc_id)
         datagram.add_uint32(do_id)
         datagram.append_data(di.get_remaining_bytes())
+        self.handle_send_datagram(datagram)
+
+    def handle_object_delete_ram(self, di):
+        do_id = di.get_uint32()
+
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_OBJECT_DELETE_RESP)
+        datagram.add_uint32(do_id)
         self.handle_send_datagram(datagram)
 
     def handle_object_update_field(self, di):

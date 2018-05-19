@@ -30,4 +30,6 @@ database-max-channels 199999999
 database-min-channels 100000000
 
 # DClass:
+dc-multiple-inheritance #t
+dc-sort-virtual-inheritance #t
 dc-sort-inheritance-by-file #f

@@ -14,7 +14,7 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 		self.maxMoney = 40
 		self.money = 0
 		self.maxHp = 15
-		self.hp = 0
+		self.hp = 15
 		self.experience = '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 		self.maxCarry = 20
 		self.trackAccess = [0, 0, 0, 0, 1, 1, 0]
@@ -22,7 +22,7 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 		self.inventory = '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
 		self.friendsList = []
 		self.defaultShard = 200000000
-		self.defaultZone = 1000
+		self.defaultZone = 2000
 		self.shtickerBook = ''
 		self.zonesVisited = [2000]
 		self.hoodsVisited = [2000]
@@ -34,7 +34,7 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 		self.clothesTopsList = []
 		self.clothesBottomsList = []
 		self.emoteAccess = []
-		self.teleportAccess = []
+		self.teleportAccess = [2000]
 		self.cogStatus = [1] * 32
 		self.cogCount = [0] * 32
 		self.cogRadar = [0] * 4

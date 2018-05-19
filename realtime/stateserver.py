@@ -51,14 +51,14 @@ class StateObject(object):
         self._network = network
         self._do_id = do_id
 
-        self._old_parent_id = None
+        self._old_parent_id = 0
         self._parent_id = parent_id
 
-        self._old_zone_id = None
+        self._old_zone_id = 0
         self._zone_id = zone_id
 
-        self._old_owner_id = None
-        self._owner_id = None
+        self._old_owner_id = 0
+        self._owner_id = 0
 
         self._dc_class = dc_class
         self._has_other = has_other
@@ -207,6 +207,7 @@ class StateObject(object):
             datagram.add_header(self._owner_id, self._network.channel,
                 types.STATESERVER_OBJECT_SET_ZONE_RESP)
 
+            datagram.add_uint32(self._old_zone_id)
             datagram.add_uint32(self._zone_id)
             self._network.handle_send_connection_datagram(datagram)
 
@@ -219,7 +220,7 @@ class StateObject(object):
 
             return
 
-        field = self._dc_class.get_field_by_index(field_id)
+        field = self._dc_class.get_inherited_field(field_id)
 
         if not field:
             self.notify.warning('Failed to update field: %d dclass: %s, unknown field!' % (
@@ -239,8 +240,17 @@ class StateObject(object):
 
             # check to see if the field can be sent by the client,
             # and if the field can be recieved by the client...
-            if not field.is_clsend() and not field.is_airecv():
-                self.notify.warning('Cannot handle field update for field: %d dclass: %s, field not sendable!' % (
+            if field.is_ownsend() and field.is_broadcast():
+                if sender != self._owner_id:
+                    self.notify.debug('Cannot handle field update for field: %s dclass: %s, field only sendable by owner: %d!' % (
+                        field.get_name(), self._dc_class.get_name(), self._owner_id))
+
+                    return
+
+                # TODO: implement field broadcasting!
+                return
+            elif not field.is_clsend():
+                self.notify.warning('Cannot handle field update for field: %s dclass: %s, field not sendable!' % (
                     field.get_name(), self._dc_class.get_name()))
 
                 return
@@ -286,20 +296,33 @@ class StateObject(object):
 
             # ensure this object's interest is within the client's owned object's
             # interest scope, if so; then send generate for the object...
-            if state_object.parent_id != self._parent_id and state_object.zone_id != self._zone_id:
-                continue
+            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
+                datagram = io.NetworkDatagram()
+                datagram.add_header(self._owner_id, self._network.channel,
+                    types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
 
-            datagram = io.NetworkDatagram()
-            datagram.add_header(self._owner_id, self._network.channel,
-                types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
+                datagram.add_uint64(state_object.do_id)
+                datagram.add_uint64(state_object.parent_id)
+                datagram.add_uint32(state_object.zone_id)
+                datagram.add_uint16(state_object.dc_class.get_number())
 
-            datagram.add_uint64(state_object.do_id)
-            datagram.add_uint64(state_object.parent_id)
-            datagram.add_uint32(state_object.zone_id)
-            datagram.add_uint16(state_object.dc_class.get_number())
+                state_object.append_required_data(datagram)
+                self._network.handle_send_connection_datagram(datagram)
 
-            state_object.append_required_data(datagram)
-            self._network.handle_send_connection_datagram(datagram)
+            # attempt to tell the client to delete this object from it's local
+            # DO array, this is done when the avatar moves from another zone or parent...
+            if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
+                datagram = io.NetworkDatagram()
+                datagram.add_header(self._owner_id, self._network.channel,
+                    types.STATESERVER_OBJECT_DELETE_RAM)
+
+                datagram.add_uint64(state_object.do_id)
+                self._network.handle_send_connection_datagram(datagram)
+
+                # reset the object's old interest sets to declare that we've cleared
+                # all of it's old data...
+                self._old_parent_id = 0
+                self._old_zone_id = 0
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')
