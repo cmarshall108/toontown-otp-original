@@ -112,26 +112,29 @@ class LoadAccountFSM(ClientOperation):
         ClientOperation.__init__(self, manager, client, callback)
 
         self._play_token = play_token
+        self._account_id = None
 
     def enterLoad(self):
         if self._play_token not in self.manager.dbm:
             self.demand('Create')
             return
 
-        account_id = int(self.manager.dbm[self._play_token])
+        self._account_id = int(self.manager.dbm[self._play_token])
 
-        self.manager.network.database_interface.query_object(self.client.channel, types.DATABASE_CHANNEL, account_id,
-            lambda dclass, fields: self.__account_loaded(account_id, dclass, fields),
+        self.manager.network.database_interface.query_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self._account_id,
+            self.__account_loaded,
             self.manager.network.dc_loader.dclasses_by_name['Account'])
 
-    def __account_loaded(self, account_id, dclass, fields):
+    def __account_loaded(self, dclass, fields):
         if not dclass and not fields:
             self.notify.warning('Failed to load account: %d for channel: %d playtoken: %s!' % (
-                account_id, self._client.channel, self._play_token))
+                self._account_id, self._client.channel, self._play_token))
 
             return
 
-        self.request('SetAccount', account_id)
+        self.request('SetAccount')
 
     def exitLoad(self):
         pass
@@ -151,39 +154,44 @@ class LoadAccountFSM(ClientOperation):
             'ESTATE_ID': (0,)
         }
 
-        self.manager.network.database_interface.create_object(self.client.channel, types.DATABASE_CHANNEL,
-            self.manager.network.dc_loader.dclasses_by_name['Account'], fields=fields,
+        self.manager.network.database_interface.create_object(self.client.channel,
+            types.DATABASE_CHANNEL,
+            self.manager.network.dc_loader.dclasses_by_name['Account'],
+            fields=fields,
             callback=self.__account_created)
 
     def __account_created(self, account_id):
-        if not account_id:
+        self._account_id = account_id
+
+        if not self._account_id:
             self.notify.warning('Failed to create account for channel: %d playtoken: %s!' % (
                 self._client.channel, self._play_token))
 
             return
 
-        self.manager.dbm[self._play_token] = str(account_id)
-        self.request('SetAccount', account_id)
+        self.manager.dbm[self._play_token] = str(self._account_id)
+        self.manager.dbm.sync()
+
+        self.request('SetAccount')
 
     def exitCreate(self):
         pass
 
-    def enterSetAccount(self, account_id):
+    def enterSetAccount(self):
         # the server says our login request was successful,
         # it is now ok to mark the client as authenticated...
         self._client.authenticated = True
 
-        # TODO: FIXME!
-        self._client.channel_alias = account_id
-        #self._client.register_for_channel(account_id)
-
-        # we're all done.
-        self.ignoreAll()
-        self.manager.stop_operation(self._client)
+        # add them to the account channel
+        self.client.handle_set_channel_id(self._account_id << 32)
 
         # call the callback our client object has specified,
         # this will notify the game client of the successful login...
         self._callback()
+
+        # we're all done.
+        self.ignoreAll()
+        self.manager.stop_operation(self._client)
 
     def exitSetAccount(self):
         pass
@@ -251,7 +259,7 @@ class RetrieveAvatarsFSM(ClientOperation):
         self.manager.network.database_interface.query_object(self.client.channel,
             types.DATABASE_CHANNEL,
             self._account_id,
-            lambda dclass, fields: self.__account_loaded(dclass, fields),
+            self.__account_loaded,
             self.manager.network.dc_loader.dclasses_by_name['Account'])
 
     def exitLoad(self):
@@ -350,10 +358,12 @@ class CreateAvatarFSM(ClientOperation):
 class LoadAvatarFSM(ClientOperation):
     notify = directNotify.newCategory('LoadAvatarFSM')
 
-    def __init__(self, manager, client, callback, avatar_id):
+    def __init__(self, manager, client, callback, account_id, avatar_id):
         ClientOperation.__init__(self, manager, client, callback)
 
+        self._account_id = account_id
         self._avatar_id = avatar_id
+
         self._dclass = None
         self._fields = {}
 
@@ -374,27 +384,32 @@ class LoadAvatarFSM(ClientOperation):
         pass
 
     def enterActivate(self):
+        channel = self.client.get_puppet_connection_channel(self._avatar_id)
+        self.client.handle_set_channel_id(channel)
+
         datagram = io.NetworkDatagram()
-        datagram.add_header(types.STATESERVER_CHANNEL, self._client.channel,
+        datagram.add_header(types.STATESERVER_CHANNEL, channel,
             types.STATESERVER_SET_AVATAR)
 
         datagram.add_uint32(self._avatar_id)
         self.manager.network.handle_send_connection_datagram(datagram)
 
-        # TODO: FIXME!
-        self._client.channel_alias = self._avatar_id
-        #self._client.register_for_channel(self._avatar_id)
-
+        # grant ownership over the distributed object...
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._avatar_id, self._client.channel,
+        datagram.add_header(self._avatar_id, channel,
             types.STATESERVER_OBJECT_SET_OWNER)
 
-        datagram.add_uint64(self._client.channel)
+        datagram.add_uint64(channel)
         self.manager.network.handle_send_connection_datagram(datagram)
+
+        self._callback(self._avatar_id)
+
+        # we're all done.
+        self.ignoreAll()
+        self.manager.stop_operation(self._client)
 
     def exitActivate(self):
         pass
-
 
 class SetNameFSM(ClientOperation):
     notify = directNotify.newCategory('SetNameFSM')
@@ -442,7 +457,6 @@ class SetNameFSM(ClientOperation):
 
     def exitSetName(self):
         pass
-
 
 class GetAvatarDetailsFSM(ClientOperation):
     notify = directNotify.newCategory('GetAvatarDetailsFSM')
@@ -504,7 +518,8 @@ class ClientAccountManager(ClientOperationManager):
 
         operation.request('Load')
 
-    def handle_retrieve_avatars(self, client, callback, account_id):
+    def handle_retrieve_avatars(self, client, callback):
+        account_id = client.get_account_id_from_channel_code(client.channel)
         operation = self.run_operation(RetrieveAvatarsFSM, client,
             callback, account_id)
 
@@ -513,9 +528,10 @@ class ClientAccountManager(ClientOperationManager):
 
         operation.request('Load')
 
-    def handle_create_avatar(self, client, callback, account_id, dna_string, index):
-        operation = self.run_operation(CreateAvatarFSM, client,
-            callback, account_id, dna_string, index)
+    def handle_create_avatar(self, client, callback, dna_string, index):
+        account_id = client.get_account_id_from_channel_code(client.channel)
+        operation = self.run_operation(CreateAvatarFSM, client, callback,
+            account_id, dna_string, index)
 
         if not operation:
             return
@@ -523,15 +539,17 @@ class ClientAccountManager(ClientOperationManager):
         operation.request('Create')
 
     def handle_set_avatar(self, client, callback, avatar_id):
-        operation = self.run_operation(LoadAvatarFSM, client,
-            callback, avatar_id)
+        account_id = client.get_account_id_from_channel_code(client.channel)
+        operation = self.run_operation(LoadAvatarFSM, client, callback,
+            account_id, avatar_id)
 
         if not operation:
             return
 
         operation.request('Query')
 
-    def handle_get_avatar_details(self, client, callback, avatar_id):
+    def handle_get_avatar_details(self, client, callback):
+        avatar_id = client.get_avatar_id_from_connection_channel(client.channel)
         operation = self.run_operation(GetAvatarDetailsFSM, client,
             callback, avatar_id)
 
@@ -540,7 +558,8 @@ class ClientAccountManager(ClientOperationManager):
 
         operation.request('Query')
 
-    def handle_set_wishname(self, client, callback, avatar_id, wish_name):
+    def handle_set_wishname(self, client, callback, wish_name):
+        avatar_id = client.get_avatar_id_from_connection_channel(client.channel)
         operation = self.run_operation(SetNameFSM, client,
             callback, avatar_id, wish_name)
 
@@ -556,20 +575,7 @@ class Client(io.NetworkHandler):
         io.NetworkHandler.__init__(self, *args, **kwargs)
 
         self.channel = self.network.channel_allocator.allocate()
-
-        # TODO: replace this with a dynamic list of owned channels which are,
-        # registered with the md (account_id, avatar_id etc...)
-        self._channel_alias = None
-
         self._authenticated = False
-
-    @property
-    def channel_alias(self):
-        return self._channel_alias
-
-    @channel_alias.setter
-    def channel_alias(self, channel_alias):
-        self._channel_alias = channel_alias
 
     @property
     def authenticated(self):
@@ -711,7 +717,9 @@ class Client(io.NetworkHandler):
 
     def handle_get_shard_list(self):
         datagram = io.NetworkDatagram()
-        datagram.add_header(types.STATESERVER_CHANNEL, self.channel, types.STATESERVER_GET_SHARD_ALL)
+        datagram.add_header(types.STATESERVER_CHANNEL, self.channel,
+            types.STATESERVER_GET_SHARD_ALL)
+
         self.network.handle_send_connection_datagram(datagram)
 
     def handle_get_shard_list_resp(self, di):
@@ -721,8 +729,8 @@ class Client(io.NetworkHandler):
         self.handle_send_datagram(datagram)
 
     def handle_get_avatars(self):
-        self.network.account_manager.handle_retrieve_avatars(self, self.__handle_retrieve_avatars_resp,
-            self._channel_alias)
+        self.network.account_manager.handle_retrieve_avatars(self,
+            self.__handle_retrieve_avatars_resp)
 
     def __handle_retrieve_avatars_resp(self, avatar_data):
         datagram = io.NetworkDatagram()
@@ -755,7 +763,7 @@ class Client(io.NetworkHandler):
             return
 
         self.network.account_manager.handle_create_avatar(self, lambda avatar_id: __handle_create_avatar_resp(
-            echo_context, avatar_id), self._channel_alias, dna_string, index)
+            echo_context, avatar_id), dna_string, index)
 
     def __handle_create_avatar_resp(self, echo_context, avatar_id):
         datagram = io.NetworkDatagram()
@@ -775,8 +783,8 @@ class Client(io.NetworkHandler):
 
             return
 
-        self.network.account_manager.handle_set_avatar(self, self.__handle_set_avatar_resp,
-            avatar_id)
+        self.network.account_manager.handle_set_avatar(self,
+            self.__handle_set_avatar_resp, avatar_id)
 
     def __handle_set_avatar_resp(self, avatar_id):
         pass
@@ -791,8 +799,8 @@ class Client(io.NetworkHandler):
 
             return
 
-        self.network.account_manager.handle_get_avatar_details(self, self.handle_avatar_details_resp,
-            avatar_id)
+        #self.network.account_manager.handle_get_avatar_details(self,
+        #    self.handle_avatar_details_resp)
 
     def handle_avatar_details_resp(self, di):
         datagram = io.NetworkDatagram()
@@ -813,8 +821,8 @@ class Client(io.NetworkHandler):
 
             return
 
-        self.network.account_manager.handle_set_wishname(self, self.__handle_set_wishname_resp,
-            avatar_id, wish_name)
+        self.network.account_manager.handle_set_wishname(self,
+            self.__handle_set_wishname_resp, wish_name)
 
     def __handle_set_wishname_resp(self, avatar_id, wish_name):
         datagram = io.NetworkDatagram()
@@ -873,17 +881,21 @@ class Client(io.NetworkHandler):
 
             return
 
+        avatar_id = self.get_avatar_id_from_connection_channel(self.channel)
+
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._channel_alias, self.channel,
+        datagram.add_header(avatar_id, self.channel,
             types.STATESERVER_OBJECT_SET_ZONE)
 
         datagram.add_uint32(zone_id)
         self.network.handle_send_connection_datagram(datagram)
 
     def handle_set_zone_resp(self, di):
+        zone_id = di.get_uint32()
+
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_DONE_SET_ZONE_RESP)
-        datagram.add_int16(di.get_uint32()) # why would the client identify a zone as an int16????
+        datagram.add_int16(zone_id) # why would the client identify a zone as an int16????
         self.handle_send_datagram(datagram)
 
     def handle_object_enter_location(self, has_other, di):
@@ -923,7 +935,7 @@ class Client(io.NetworkHandler):
             return
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(do_id, self._channel,
+        datagram.add_header(do_id, self.channel,
             types.STATESERVER_OBJECT_UPDATE_FIELD)
 
         datagram.add_uint32(do_id)
@@ -947,8 +959,8 @@ class Client(io.NetworkHandler):
         if self.network.account_manager.has_fsm(self.channel):
             self.network.account_manager.stop_operation(self)
 
-        if self.channel:
-            self.network.channel_allocator.free(self.channel)
+        if self.allocated_channel:
+            self.network.channel_allocator.free(self.allocated_channel)
 
         io.NetworkHandler.shutdown(self)
 

@@ -76,12 +76,18 @@ class ParticipantInterface(object):
         if self.has_channel(channel):
             return
 
+        self.notify.debug('Registered new channel: %d connection: %r' % (
+            channel, participant.connection))
+
         participant.channel = channel
         self._participants[participant.channel] = participant
 
     def remove_channel(self, participant):
         if not self.has_channel(participant.channel):
             return
+
+        self.notify.debug('Unregistered existing channel: %d connection: %r' % (
+            participant.channel, participant.connection))
 
         del self._participants[participant.channel]
         participant.channel = None

@@ -26,7 +26,7 @@ database-connect-port 7100
 database-channel 1002
 database-directory databases/yaml
 database-extension .yaml
-database-max-channels 100999999
+database-max-channels 199999999
 database-min-channels 100000000
 
 # DClass:

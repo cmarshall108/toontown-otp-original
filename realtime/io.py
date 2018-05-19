@@ -432,6 +432,18 @@ class NetworkManager(object):
     def get_unique_name(self, name):
         return '%s-%s-%s' % (self.__class__.__name__, name, id(self))
 
+    def get_puppet_connection_channel(self, doId):
+        return doId + (1001 << 32)
+
+    def get_account_connection_channel(self, doId):
+        return doId + (1003 << 32)
+
+    def get_account_id_from_channel_code(self, channel):
+        return channel >> 32
+
+    def get_avatar_id_from_connection_channel(self, channel):
+        return channel & 0xffffffff
+
 class NetworkConnector(NetworkManager):
     notify = directNotify.newCategory('NetworkConnector')
 
@@ -588,6 +600,7 @@ class NetworkHandler(NetworkManager):
         self._address = address
         self._connection = connection
         self._channel = channel
+        self._allocated_channel = channel
 
         self.__data = []
 
@@ -617,6 +630,14 @@ class NetworkHandler(NetworkManager):
     def channel(self, channel):
         self._channel = channel
 
+    @property
+    def allocated_channel(self):
+        return self._allocated_channel
+
+    @allocated_channel.setter
+    def allocated_channel(self, allocated_channel):
+        self._allocated_channel = allocated_channel
+
     def setup(self):
         if not self.__update_task:
             self.__update_task = task_mgr.add(self.__update, self.get_unique_name(
@@ -642,6 +663,13 @@ class NetworkHandler(NetworkManager):
         datagram = NetworkDatagram()
         datagram.add_control_header(channel, types.CONTROL_REMOVE_CHANNEL)
         self._network.handle_send_connection_datagram(datagram)
+
+    def handle_set_channel_id(self, channel):
+        if channel != self._channel:
+            self.unregister_for_channel(self._channel)
+
+        self._channel = channel
+        self.register_for_channel(channel)
 
     def __update(self, task):
         """
@@ -859,7 +887,18 @@ class NetworkListener(NetworkManager):
         """
 
         for connection, handler in self.__handlers.items():
+
             if handler.channel == channel:
+                return handler
+
+            if self.get_account_connection_channel(self.get_account_id_from_channel_code(
+                self.channel)) == channel:
+
+                return handler
+
+            if self.get_puppet_connection_channel(self.get_avatar_id_from_connection_channel(
+                self.channel)) == channel:
+
                 return handler
 
         return None

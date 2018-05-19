@@ -267,7 +267,7 @@ class StateObject(object):
         field_packer.end_pack()
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(self._owner_id, self._do_id,
+        datagram.add_header(self._owner_id, sender,
             types.STATESERVER_OBJECT_UPDATE_FIELD)
 
         datagram.add_uint32(self._do_id)
