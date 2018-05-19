@@ -76,7 +76,7 @@ class StateObject(object):
                 self.notify.error('Failed to unpack field: %d dclass: %s, unknown field!' % (
                     field_index, self._dc_class.get_name()))
 
-            if not field.as_molecular_field() or not field.is_required():
+            if field.as_molecular_field() or not field.is_required():
                 continue
 
             field_packer.begin_unpack(field)
