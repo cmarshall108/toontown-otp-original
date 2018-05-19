@@ -1,26 +1,21 @@
+from direct.directnotify.DirectNotifyGlobal import directNotify
 from game.HoodAI import HoodAI
+from game import ToontownGlobals
 from game.DistributedDonaldAI import DistributedDonaldAI
 from game.DistributedBoatAI import DistributedBoatAI
 
 class DDHoodAI(HoodAI):
+	notify = directNotify.newCategory('DDHoodAI')
 
-	def __init__(self, air, zoneId=1000):
-		HoodAI.__init__(self, air, zoneId)
+	def __init__(self, air):
+		HoodAI.__init__(self, air, ToontownGlobals.DonaldsDock)
 
-	def generateObjectsInZone(self):
-		HoodAI.generateObjectsInZone(self)
+	def createObjects(self):
+		if simbase.config.GetBool('want-boat', False):
+			self.createBoat()
 
-		#The boat generates a classicchar.
-		#if base.config.GetBool('want-classic-chars', False):
-			#self.createClassicChars()
+		HoodAI.createObjects(self)
 
-		self.createDistributedBoat()
-
-	def createClassicChars(self):
-		self.DistributedDonald = DistributedDonaldAI(self.air)
-		self.DistributedDonald.setWalk('0', '0')
-		self.DistributedDonald.generateWithRequired(self.zoneId)
-
-	def createDistributedBoat(self):
-		self.DistributedBoat = DistributedBoatAI(self.air)
-		self.DistributedBoat.generateWithRequired(self.zoneId)
+	def createBoat(self):
+		self.boat = DistributedBoatAI(self.air)
+		self.boat.generateWithRequired(self.zoneId)

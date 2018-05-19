@@ -7,7 +7,7 @@ class DistributedBoatAI(DistributedObjectAI):
     notify = DirectNotifyGlobal.directNotify.newCategory("DistributedBoatAI")
     PIER_TIME = 5.0
     TRAVEL_TIME = 20.0
-    
+
     def __init__(self, air):
         DistributedObjectAI.__init__(self, air)
         self.state = ''
@@ -23,7 +23,7 @@ class DistributedBoatAI(DistributedObjectAI):
     def enterDockedEast(self):
         self.setState('DockedEast')
         self.sailWestTask = taskMgr.doMethodLater(self.PIER_TIME, self.__sailWest, 'boatSailingTask')
-        
+
     def exitDockedEast(self):
         taskMgr.remove(self.sailWestTask)
 

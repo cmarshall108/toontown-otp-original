@@ -220,7 +220,10 @@ class StateObject(object):
 
             return
 
-        field = self._dc_class.get_inherited_field(field_id)
+        if field_id > self._dc_class.get_num_inherited_fields():
+            field = self._dc_class.get_field_by_index(field_id)
+        else:
+            field = self._dc_class.get_inherited_field(field_id)
 
         if not field:
             self.notify.warning('Failed to update field: %d dclass: %s, unknown field!' % (
@@ -235,9 +238,26 @@ class StateObject(object):
 
             return
 
+        if not field.as_atomic_field():
+            return
+
+        field_packer = DCPacker()
+        field_packer.set_unpack_data(di.get_remaining_bytes())
+        field_packer.begin_unpack(field)
+        field_args = field.unpack_args(field_packer)
+        field_packer.end_unpack()
+
+        # check to see if the field is a required field or is in the alternative
+        # other field dictionary, if so; update the field with the new value...
+        if field.is_required():
+
+            # check to see if the field is ram, a non-persistant
+            # field value that is removed on object deletion...
+            if field.is_ram():
+                self._required_fields[field.get_number()] = field_args
+
         # ensure the sender of this field update can actually send it...
         if not self._network.shard_manager.has_shard(self._owner_id):
-
             # check to see if the field can be sent by the client,
             # and if the field can be recieved by the client...
             if field.is_ownsend() and field.is_broadcast():
@@ -254,21 +274,11 @@ class StateObject(object):
                     field.get_name(), self._dc_class.get_name()))
 
                 return
-
-        field_packer = DCPacker()
-        field_packer.set_unpack_data(di.get_remaining_bytes())
-        field_packer.begin_unpack(field)
-        field_args = field.unpack_args(field_packer)
-        field_packer.end_unpack()
-
-        # check to see if the field is a required field or is in the alternative
-        # other field dictionary, if so; update the field with the new value...
-        if field.as_atomic_field() and field.is_required():
-
-            # check to see if the field is ram, a non-persistant
-            # field value that is removed on object deletion...
-            if field.is_ram():
-                self._required_fields[field.get_number()] = field_args
+        else:
+            # check to see if this field update is to broadcast to all other clients,
+            # and will not be forwarded back to the AI...
+            if field.is_broadcast() and field.is_ram():
+                return
 
         field_packer = DCPacker()
         field_packer.raw_pack_uint16(field_id)

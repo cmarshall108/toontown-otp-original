@@ -6,6 +6,7 @@ from game.OtpDoGlobals import *
 from realtime.types import *
 from game.TimeManagerAI import TimeManagerAI
 from game.TTHoodAI import TTHoodAI
+from game.DDHoodAI import DDHoodAI
 
 class AIRepository(OTPInternalRepository):
     notify = DirectNotifyGlobal.directNotify.newCategory('AIRepository')
@@ -65,6 +66,9 @@ class AIRepository(OTPInternalRepository):
     def createZones(self):
         if simbase.config.GetBool('want-toontown-central', False):
             self.hoods.append(TTHoodAI(self))
+
+        if simbase.config.GetBool('want-donalds-dock', False):
+            self.hoods.append(DDHoodAI(self))
 
         for hood in self.hoods:
             hood.createObjects()

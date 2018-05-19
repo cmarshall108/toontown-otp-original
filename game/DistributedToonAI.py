@@ -34,7 +34,7 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 		self.clothesTopsList = []
 		self.clothesBottomsList = []
 		self.emoteAccess = []
-		self.teleportAccess = [2000]
+		self.teleportAccess = []
 		self.cogStatus = [1] * 32
 		self.cogCount = [0] * 32
 		self.cogRadar = [0] * 4
