@@ -238,9 +238,6 @@ class StateObject(object):
 
             return
 
-        if not field.as_atomic_field():
-            return
-
         field_packer = DCPacker()
         field_packer.set_unpack_data(di.get_remaining_bytes())
         field_packer.begin_unpack(field)
@@ -249,7 +246,7 @@ class StateObject(object):
 
         # check to see if the field is a required field or is in the alternative
         # other field dictionary, if so; update the field with the new value...
-        if field.is_required():
+        if field.as_atomic_field() and field.is_required():
 
             # check to see if the field is ram, a non-persistant
             # field value that is removed on object deletion...
