@@ -237,9 +237,9 @@ class StateObject(object):
             if not field.is_clsend() or not field.is_airecv():
                 return
 
-            # ensure this field is not a bogus field...
-            if field.is_bogus_field():
-                return
+        # ensure this field is not a bogus field...
+        if field.is_bogus_field():
+            return
 
         datagram = io.NetworkDatagram()
         datagram.add_header(self._owner_id, self._do_id,
