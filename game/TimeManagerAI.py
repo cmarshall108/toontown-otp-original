@@ -10,4 +10,4 @@ class TimeManagerAI(DistributedObjectAI):
 
 	def requestServerTime(self, context):
 		self.sendUpdateToAvatarId(self.air.getAvatarIdFromSender(), 'serverTime', [context,
-			globalClockDelta.getRealNetworkTime(bits=32), int(time.time())])
+			globalClockDelta.getRealNetworkTime(bits=16), int(time.time())])

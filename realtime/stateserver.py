@@ -170,8 +170,6 @@ class StateObject(object):
             self.handle_set_owner(sender, di)
         elif message_type == types.STATESERVER_OBJECT_SET_ZONE:
             self.handle_set_zone(sender, di)
-        elif message_type == types.STATESERVER_OBJECT_UPDATE_FIELD:
-            self.handle_update_field(sender, di)
 
     def handle_set_owner(self, sender, di):
         owner_id = di.get_uint64()
@@ -229,24 +227,53 @@ class StateObject(object):
 
             return
 
+        # ensure this field is not a bogus field...
+        if field.is_bogus_field():
+            self.notify.warning('Cannot handle field update for field: %d dclass: %s, field is bogus!' % (
+                field.get_name(), self._dc_class.get_name()))
+
+            return
+
         # ensure the sender of this field update can actually send it...
         if not self._network.shard_manager.has_shard(self._owner_id):
 
             # check to see if the field can be sent by the client,
             # and if the field can be recieved by the client...
-            if not field.is_clsend() or not field.is_airecv():
+            if not field.is_clsend() and not field.is_airecv():
+                self.notify.warning('Cannot handle field update for field: %d dclass: %s, field not sendable!' % (
+                    field.get_name(), self._dc_class.get_name()))
+
                 return
 
-        # ensure this field is not a bogus field...
-        if field.is_bogus_field():
-            return
+        field_packer = DCPacker()
+        field_packer.set_unpack_data(di.get_remaining_bytes())
+        field_packer.begin_unpack(field)
+        field_args = field.unpack_args(field_packer)
+        field_packer.end_unpack()
+
+        # check to see if the field is a required field or is in the alternative
+        # other field dictionary, if so; update the field with the new value...
+        if field.as_atomic_field() and field.is_required():
+
+            # check to see if the field is ram, a non-persistant
+            # field value that is removed on object deletion...
+            if field.is_ram():
+                self._required_fields[field.get_number()] = field_args
+
+        field_packer = DCPacker()
+        field_packer.raw_pack_uint16(field_id)
+        field_packer.begin_pack(field)
+        field.pack_args(field_packer, field_args)
+        field_packer.end_pack()
 
         datagram = io.NetworkDatagram()
         datagram.add_header(self._owner_id, self._do_id,
             types.STATESERVER_OBJECT_UPDATE_FIELD)
 
+        datagram.add_uint32(self._do_id)
         datagram.add_uint16(field.get_number())
-        datagram.append_data(di.get_remaining_bytes())
+
+        datagram.append_data(field_packer.get_string())
         self._network.handle_send_connection_datagram(datagram)
 
     def update_interests(self):
@@ -330,6 +357,8 @@ class StateServer(io.NetworkConnector):
             self.handle_generate(sender, False, di)
         elif message_type == types.STATESERVER_OBJECT_GENERATE_WITH_REQUIRED_OTHER:
             self.handle_generate(sender, True, di)
+        elif message_type == types.STATESERVER_OBJECT_UPDATE_FIELD:
+            self.handle_object_update_field(sender, di)
         elif message_type == types.STATESERVER_SET_AVATAR:
             self.handle_set_avatar(sender, di)
         else:
@@ -387,6 +416,25 @@ class StateServer(io.NetworkConnector):
         state_object.owner_id = sender
 
         self._object_manager.add_state_object(state_object)
+
+    def handle_object_update_field(self, sender, di):
+        do_id = di.get_uint32()
+
+        if not di.get_remaining_size():
+            self.notify.warning('Cannot handle an field update for object: %d, truncated datagram!' % (
+                do_id))
+
+            return
+
+        state_object = self._object_manager.get_state_object(do_id)
+
+        if not state_object:
+            self.notify.warning('Cannot handle an field update for object: %d, unknown object!' % (
+                do_id))
+
+            return
+
+        state_object.handle_update_field(sender, di)
 
     def handle_set_avatar(self, sender, di):
         # ensure the sender of this message was not a shard channel,

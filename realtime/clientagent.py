@@ -661,6 +661,8 @@ class Client(io.NetworkHandler):
             self.handle_object_enter_location(False, di)
         elif message_type == types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED_OTHER:
             self.handle_object_enter_location(True, di)
+        elif message_type == types.STATESERVER_OBJECT_UPDATE_FIELD:
+            self.handle_object_update_field_resp(di)
         else:
             self.network.database_interface.handle_datagram(message_type, di)
 
@@ -924,9 +926,22 @@ class Client(io.NetworkHandler):
         datagram.add_header(do_id, self._channel,
             types.STATESERVER_OBJECT_UPDATE_FIELD)
 
+        datagram.add_uint32(do_id)
         datagram.add_uint16(field_id)
+
         datagram.append_data(di.get_remaining_bytes())
         self.network.handle_send_connection_datagram(datagram)
+
+    def handle_object_update_field_resp(self, di):
+        do_id = di.get_uint32()
+        field_id = di.get_uint16()
+
+        datagram = io.NetworkDatagram()
+        datagram.add_uint16(types.CLIENT_OBJECT_UPDATE_FIELD_RESP)
+        datagram.add_uint32(do_id)
+        datagram.add_uint16(field_id)
+        datagram.append_data(di.get_remaining_bytes())
+        self.handle_send_datagram(datagram)
 
     def shutdown(self):
         if self.network.account_manager.has_fsm(self.channel):
