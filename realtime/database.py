@@ -256,7 +256,7 @@ class DatabaseServer(io.NetworkConnector):
     def __init__(self, *args, **kwargs):
         io.NetworkConnector.__init__(self, *args, **kwargs)
 
-        self._backend = DatabaseYAMLBackend()
+        self._backend = DatabaseJSONBackend()
 
     @property
     def backend(self):
@@ -315,16 +315,16 @@ class DatabaseServer(io.NetworkConnector):
                 self.notify.error('Failed to unpack field args for field: %d dclass: %s, invalid result!' % (
                     field.get_name(), dc_class.get_name()))
 
-            if len(field_args) == 1:
-                fields[field.get_name()] = field_args[0]
-            else:
-                fields[field.get_name()] = list(field_args)
+            fields[field.get_name()] = field_args
 
-        for index in xrange(dc_class.get_num_fields()):
+        for index in xrange(dc_class.get_num_inherited_fields()):
             field_packer = DCPacker()
             field = dc_class.get_inherited_field(index)
 
-            if not field or field.get_name() in fields:
+            if not field:
+                continue
+
+            if field.get_name() in fields:
                 continue
 
             if not field.is_db() or not field.has_default_value():
@@ -339,10 +339,7 @@ class DatabaseServer(io.NetworkConnector):
                 self.notify.error('Failed to unpack field args for field: %d dclass: %s, invalid result!' % (
                     field.get_name(), dc_class.get_name()))
 
-            if len(field_args) == 1:
-                fields[field.get_name()] = field_args[0]
-            else:
-                fields[field.get_name()] = list(field_args)
+            fields[field.get_name()] = field_args
 
         file_object.set_value('fields', fields)
 
@@ -350,7 +347,9 @@ class DatabaseServer(io.NetworkConnector):
         self._backend.tracker.set_value('next', do_id + 1)
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(sender, self.channel, types.DBSERVER_CREATE_OBJECT_RESP)
+        datagram.add_header(sender, self.channel,
+            types.DBSERVER_CREATE_OBJECT_RESP)
+
         datagram.add_uint32(context)
         datagram.add_uint32(do_id)
         self.handle_send_connection_datagram(datagram)
@@ -384,30 +383,26 @@ class DatabaseServer(io.NetworkConnector):
             return
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(sender, self.channel, types.DBSERVER_OBJECT_GET_ALL_RESP)
+        datagram.add_header(sender, self.channel,
+            types.DBSERVER_OBJECT_GET_ALL_RESP)
+
         datagram.add_uint32(context)
         datagram.add_uint8(1)
 
         field_packer = DCPacker()
         field_count = 0
-        for key, value in fields.items():
-            field = dc_class.get_field_by_name(key)
+        for field_name, field_args in fields.items():
+            field = dc_class.get_field_by_name(field_name)
 
             if not field:
                 self.notify.warning('Failed to query object %d context: %d, unknown field: %s' % (
-                    do_id, context, key))
+                    do_id, context, field_name))
 
                 return
 
             field_packer.raw_pack_uint16(field.get_number())
             field_packer.begin_pack(field)
-
-            if type(value) == list:
-                field_packer.push()
-                field_packer.pack_object(value)
-            else:
-                field.pack_args(field_packer, (value,))
-
+            field.pack_args(field_packer, field_args)
             field_packer.end_pack()
             field_count += 1
 
@@ -462,7 +457,8 @@ class DatabaseServer(io.NetworkConnector):
             self.notify.error('Failed to unpack field args for field: %d dclass: %s, invalid result!' % (
                 field.get_name(), dc_class.get_name()))
 
-        fields[field.get_name()] = field_args[0]
+        fields[field.get_name()] = field_args
+        file_object.set_value('fields', fields)
 
         self._backend.close_file(file_object)
 

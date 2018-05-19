@@ -24,8 +24,8 @@ stateserver-channel 1001
 database-connect-address 127.0.0.1
 database-connect-port 7100
 database-channel 1002
-database-directory databases/yaml
-database-extension .yaml
+database-directory databases/json
+database-extension .json
 database-max-channels 199999999
 database-min-channels 100000000
 

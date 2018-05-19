@@ -7,6 +7,7 @@
 
 import time
 import semidbm
+import collections
 
 from panda3d.core import UniqueIdAllocator
 from panda3d.direct import DCPacker
@@ -373,13 +374,13 @@ class LoadAvatarFSM(ClientOperation):
         self._account_id = account_id
         self._avatar_id = avatar_id
 
-        self._dclass = None
+        self._dc_class = None
         self._fields = {}
 
     def enterQuery(self):
 
         def response(dclass, fields):
-            self._dclass = dclass
+            self._dc_class = dclass
             self._fields = fields
             self.request('Activate')
 
@@ -401,6 +402,37 @@ class LoadAvatarFSM(ClientOperation):
             types.STATESERVER_SET_AVATAR)
 
         datagram.add_uint32(self._avatar_id)
+
+        sorted_fields = {}
+        for field_name, field_args in self._fields.items():
+            field = self._dc_class.get_field_by_name(field_name)
+
+            if not field:
+                self.notify.warning('Failed to pack fields for object %d, unknown field: %s!' % (
+                    self._avatar_id, field_name))
+
+                return
+
+            sorted_fields[field.get_number()] = field_args
+
+        sorted_fields = collections.OrderedDict(sorted(
+            sorted_fields.items()))
+
+        field_packer = DCPacker()
+        for field_index, field_args in sorted_fields.items():
+            field = self._dc_class.get_field_by_index(field_index)
+
+            if not field:
+                self.notify.warning('Failed to pack fields for object %d, unknown field: %d!' % (
+                    self._avatar_id, field_index))
+
+                return
+
+            field_packer.begin_pack(field)
+            field.pack_args(field_packer, field_args)
+            field_packer.end_pack()
+
+        datagram.append_data(field_packer.get_string())
         self.manager.network.handle_send_connection_datagram(datagram)
 
         # grant ownership over the distributed object...
@@ -429,13 +461,13 @@ class SetNameFSM(ClientOperation):
         self._avatar_id = avatar_id
         self._wish_name = wish_name
         self._callback = callback
-        self._dclass = None
+        self._dc_class = None
         self._fields = {}
 
     def enterQuery(self):
 
         def response(dclass, fields):
-            self._dclass = dclass
+            self._dc_class = dclass
             self._fields = fields
             self.request('SetName')
 
@@ -475,13 +507,13 @@ class GetAvatarDetailsFSM(ClientOperation):
 
         self._avatar_id = avatar_id
         self._callback = callback
-        self._dclass = None
+        self._dc_class = None
         self._fields = {}
 
     def enterQuery(self):
 
         def response(dclass, fields):
-            self._dclass = dclass
+            self._dc_class = dclass
             self._fields = fields
             self.request('SendDetails')
 

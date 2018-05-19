@@ -62,37 +62,28 @@ class StateObject(object):
 
         self._dc_class = dc_class
         self._has_other = has_other
+
         self._required_fields = {}
+        self._other_fields = {}
 
-        # TODO FIXME: properly retrieve and activate avatar fields from the database,
-        # field data in which is sent by the cliet agent on activation...
-        if self._has_other:
-            for index in xrange(self._dc_class.get_num_inherited_fields()):
-                field = self._dc_class.get_inherited_field(index)
+        field_packer = DCPacker()
+        field_packer.set_unpack_data(di.get_remaining_bytes())
 
-                if not field.as_atomic_field() or not field.is_required():
-                    continue
+        for field_index in xrange(self._dc_class.get_num_inherited_fields()):
+            field = self._dc_class.get_inherited_field(field_index)
 
-                self._required_fields[field.get_number()] = field.get_default_value()
-        else:
-            field_packer = DCPacker()
-            field_packer.set_unpack_data(di.get_remaining_bytes())
+            if not field:
+                self.notify.error('Failed to unpack field: %d dclass: %s, unknown field!' % (
+                    field_index, self._dc_class.get_name()))
 
-            for field_index in xrange(self._dc_class.get_num_inherited_fields()):
-                field = self._dc_class.get_inherited_field(field_index)
+            if not field.as_molecular_field() or not field.is_required():
+                continue
 
-                if not field:
-                    self.notify.error('Failed to unpack field: %d dclass: %s, unknown field!' % (
-                        field_index, self._dc_class.get_name()))
+            field_packer.begin_unpack(field)
+            field_args = field.unpack_args(field_packer)
+            field_packer.end_unpack()
 
-                if not field.as_atomic_field() or not field.is_required():
-                    continue
-
-                field_packer.begin_unpack(field)
-                field_args = field.unpack_args(field_packer)
-                field_packer.end_unpack()
-
-                self._required_fields[field.get_number()] = field_args
+            self._required_fields[field.get_number()] = field_args
 
         self._network.register_for_channel(self._do_id)
 
@@ -155,11 +146,10 @@ class StateObject(object):
 
             field_packer.begin_pack(field)
 
-            # TODO FIXME!
-            if self._has_other:
-                field_packer.pack_literal_value(self._required_fields[field.get_number()])
-            else:
+            if not self._has_other:
                 field.pack_args(field_packer, self._required_fields[field.get_number()])
+            else:
+                field.pack_args(field_packer, self._other_fields[field.get_number()])
 
             field_packer.end_pack()
 
@@ -480,7 +470,7 @@ class StateServer(io.NetworkConnector):
         zone_id = 0
         dc_class = self.dc_loader.dclasses_by_name['DistributedToon']
 
-        avatar_object = StateObject(self, do_id, parent_id, zone_id, dc_class, True, di)
+        avatar_object = StateObject(self, do_id, parent_id, zone_id, dc_class, False, di)
         self._object_manager.add_state_object(avatar_object)
 
         # tell the AI which has been chosen to generate the avatar on,
