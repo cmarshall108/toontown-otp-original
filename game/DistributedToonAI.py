@@ -7,19 +7,19 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 	def __init__(self, air):
 		DistributedSmoothNodeAI.__init__(self, air)
 
-		self.name = 'Toon'
-		self.dnaString = 't\x12\x02\x00\x01\x03\x07\x03\x07\x07\x04\x08\x00\x08\x08'
+		self.name = ''
+		self.dnaString = ''
 		self.maxBankMoney = 1000
 		self.bankMoney = 0
 		self.maxMoney = 40
 		self.money = 0
 		self.maxHp = 15
-		self.hp = 15
-		self.experience = '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+		self.hp = 0
+		self.experience = ''
 		self.maxCarry = 20
 		self.trackAccess = [0, 0, 0, 0, 1, 1, 0]
 		self.trackProgress = [-1, 0]
-		self.inventory = '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+		self.inventory = ''
 		self.friendsList = []
 		self.defaultShard = 200000000
 		self.defaultZone = 2000
@@ -29,7 +29,7 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 		self.interface = ''
 		self.accountName = ''
 		self.lastHood = 0
-		self.tutorialAck = 1
+		self.tutorialAck = 0
 		self.maxClothes = 10
 		self.clothesTopsList = []
 		self.clothesBottomsList = []
