@@ -198,9 +198,6 @@ class StateObject(object):
             datagram.add_uint32(self._zone_id)
             self._network.handle_send_connection_datagram(datagram)
         else:
-            # update our interest set.
-            self.update_interests()
-
             # if we have an owner, tell them that we've sent all of the initial zone
             # objects in the new interest set...
             datagram = io.NetworkDatagram()
@@ -210,6 +207,9 @@ class StateObject(object):
             datagram.add_uint32(self._old_zone_id)
             datagram.add_uint32(self._zone_id)
             self._network.handle_send_connection_datagram(datagram)
+
+            # update our interest set.
+            self.update_interests()
 
     def handle_update_field(self, sender, di):
         field_id = di.get_uint16()
