@@ -303,11 +303,13 @@ class RetrieveAvatarsFSM(ClientOperation):
 class CreateAvatarFSM(ClientOperation):
     notify = directNotify.newCategory('CreateAvatarFSM')
 
-    def __init__(self, manager, client, callback, account_id, dna_string, index):
+    def __init__(self, manager, client, callback, echo_context, account_id, dna_string, index):
         ClientOperation.__init__(self, manager, client, callback)
 
         self._account_id = account_id
         self._dna_string = dna_string
+        self._callback = callback
+        self._echo_context = echo_context
         self._index = index
 
     def enterCreate(self):
@@ -343,6 +345,12 @@ class CreateAvatarFSM(ClientOperation):
             self._account_id,
             self.manager.network.dc_loader.dclasses_by_name['Account'],
             new_fields)
+            
+        self._callback(self._echo_context, avatar_id)
+            
+        # We're all done
+        self.ignoreAll()
+        self.manager.stop_operation(self._client)
 
     def exitCreate(self):
         pass
@@ -426,7 +434,7 @@ class SetNameFSM(ClientOperation):
 
     def enterSetName(self):
         # TODO: Parse a check the wishname for bad names and etc.
-        self._fields['setName'] = self._wish_name
+        self._fields['setName'] = (str(self._wish_name),)
 
         self.manager.network.database_interface.update_object(self.client.channel,
             types.DATABASE_CHANNEL,
@@ -513,9 +521,9 @@ class ClientAccountManager(ClientOperationManager):
 
         operation.request('Load')
 
-    def handle_create_avatar(self, client, callback, account_id, dna_string, index):
+    def handle_create_avatar(self, client, callback, echo_context, account_id, dna_string, index):
         operation = self.run_operation(CreateAvatarFSM, client,
-            callback, account_id, dna_string, index)
+            callback, echo_context, account_id, dna_string, index)
 
         if not operation:
             return
@@ -754,8 +762,7 @@ class Client(io.NetworkHandler):
 
             return
 
-        self.network.account_manager.handle_create_avatar(self, lambda avatar_id: __handle_create_avatar_resp(
-            echo_context, avatar_id), self._channel_alias, dna_string, index)
+        self.network.account_manager.handle_create_avatar(self, self.__handle_create_avatar_resp, echo_context, self._channel_alias, dna_string, index)
 
     def __handle_create_avatar_resp(self, echo_context, avatar_id):
         datagram = io.NetworkDatagram()
