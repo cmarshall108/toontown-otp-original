@@ -182,7 +182,7 @@ class StateObject(object):
 
         # delete any existing objects within our new interest set,
         # exclude our own object since thats a local object...
-        self.handle_delete_objects(excludes=[self])
+        self.handle_delete_objects(excludes=[self.do_id])
 
         # if we have an owner, tell them that we've sent all of the initial zone
         # objects in the new interest set...
@@ -190,9 +190,9 @@ class StateObject(object):
 
         # generate any new objects within our new interest set,
         # exclude our own object since thats a local object...
-        self.handle_send_generates(excludes=[self])
+        self.handle_send_generates(excludes=[self.do_id])
 
-    def handle_update_field(self, sender, di):
+    def handle_update_field(self, sender, channel, di):
         field_id = di.get_uint16()
         field = self._dc_class.get_field_by_index(field_id)
 
@@ -210,6 +210,14 @@ class StateObject(object):
             return
 
         if not self._network.shard_manager.has_shard(sender):
+            avatar_id = self._network.get_avatar_id_from_connection_channel(sender)
+
+            if not avatar_id:
+                self.notify.warning('Cannot handle field update for field: %s dclass: %s, unknown avatar: %d!' % (
+                    field.get_name(), self._dc_class.get_name(), avatar_id))
+
+                return
+
             if field.is_ownsend():
                 if sender != self._owner_id:
                     self.notify.warning('Cannot handle field update for field: %s dclass: %s, field not sendable!' % (
@@ -224,14 +232,22 @@ class StateObject(object):
                     return
 
             if not field.is_broadcast():
-                self.handle_send_update(field, self._parent_id, sender, di)
-            else:
-                self.handle_send_update_broadcast(field, sender, di, excludes=[self])
-        else:
-            if not field.is_broadcast():
                 self.handle_send_update(field, sender, self._parent_id, di)
             else:
-                self.handle_send_update_broadcast(field, self._parent_id, di, excludes=[self])
+                self.handle_send_update_broadcast(field, sender, di, excludes=[avatar_id])
+        else:
+            if not field.is_broadcast():
+                avatar_channel = self._network.get_puppet_connection_channel(channel)
+
+                if not avatar_id:
+                    self.notify.warning('Cannot handle field update for field: %s dclass: %s, bad avatar channel: %d!' % (
+                        field.get_name(), self._dc_class.get_name(), avatar_channel))
+
+                    return
+
+                self.handle_send_update(field, self._parent_id, avatar_channel, di)
+            else:
+                self.handle_send_update_broadcast(field, self._parent_id, di, excludes=[self.do_id])
 
     def handle_send_changing_location(self, channel):
         datagram = io.NetworkDatagram()
@@ -274,15 +290,19 @@ class StateObject(object):
     def handle_send_update_broadcast(self, field, sender, di, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
-            if state_object in excludes:
+            if state_object.do_id in excludes:
                 continue
 
             if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
 
                 if not state_object.owner_id:
-                    continue
 
-                self.handle_send_update(field, sender, state_object.owner_id, di)
+                    if state_object.dc_class.get_number() != self._dc_class.get_number():
+                        continue
+
+                    self.handle_send_update(field, sender, state_object.parent_id, di)
+                else:
+                    self.handle_send_update(field, sender, state_object.owner_id, di)
 
     def handle_send_generate(self, channel):
         datagram = io.NetworkDatagram()
@@ -300,7 +320,7 @@ class StateObject(object):
     def handle_send_generates(self, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
-            if state_object in excludes:
+            if state_object.do_id in excludes:
                 continue
 
             if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
@@ -320,7 +340,7 @@ class StateObject(object):
     def handle_delete_objects(self, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
-            if state_object in excludes:
+            if state_object.do_id in excludes:
                 continue
 
             if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
@@ -389,7 +409,7 @@ class StateServer(io.NetworkConnector):
         elif message_type == types.STATESERVER_OBJECT_GENERATE_WITH_REQUIRED_OTHER:
             self.handle_generate(sender, True, di)
         elif message_type == types.STATESERVER_OBJECT_UPDATE_FIELD:
-            self.handle_object_update_field(sender, di)
+            self.handle_object_update_field(sender, channel, di)
         elif message_type == types.STATESERVER_SET_AVATAR:
             self.handle_set_avatar(sender, di)
         else:
@@ -446,7 +466,7 @@ class StateServer(io.NetworkConnector):
         state_object = StateObject(self, do_id, parent_id, zone_id, dc_class, has_other, di)
         self._object_manager.add_state_object(state_object)
 
-    def handle_object_update_field(self, sender, di):
+    def handle_object_update_field(self, sender, channel, di):
         do_id = di.get_uint32()
 
         if not di.get_remaining_size():
@@ -463,7 +483,7 @@ class StateServer(io.NetworkConnector):
 
             return
 
-        state_object.handle_update_field(sender, di)
+        state_object.handle_update_field(sender, channel, di)
 
     def handle_set_avatar(self, sender, di):
         # ensure the sender of this message was not a shard channel,
