@@ -161,17 +161,7 @@ class StateObject(object):
         datagram.append_data(field_packer.get_string())
 
     def setup(self):
-        for state_object in self._network.object_manager.state_objects.values():
-
-            if state_object == self:
-                continue
-
-            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
-
-                if not state_object.owner_id:
-                    continue
-
-                self.handle_send_generate(state_object.owner_id)
+        self.handle_send_generate_broadcast()
 
     def handle_internal_datagram(self, sender, message_type, di):
         if message_type == types.STATESERVER_OBJECT_SET_OWNER:
@@ -196,6 +186,7 @@ class StateObject(object):
         # delete any existing objects within our new interest set,
         # exclude our own object since thats a local object...
         self.handle_delete_objects(excludes=[self.do_id])
+        self.handle_send_delete_broadcast(excludes=[self.do_id])
 
         # if we have an owner, tell them that we've sent all of the initial zone
         # objects in the new interest set...
@@ -204,6 +195,7 @@ class StateObject(object):
         # generate any new objects within our new interest set,
         # exclude our own object since thats a local object...
         self.handle_send_generates(excludes=[self.do_id])
+        self.handle_send_generate_broadcast(excludes=[self.do_id])
 
     def handle_update_field(self, sender, channel, di):
         field_id = di.get_uint16()
@@ -252,7 +244,7 @@ class StateObject(object):
             if not field.is_broadcast():
                 avatar_channel = self._network.get_puppet_connection_channel(channel)
 
-                if not avatar_id:
+                if not avatar_channel:
                     self.notify.warning('Cannot handle field update for field: %s dclass: %s, bad avatar channel: %d!' % (
                         field.get_name(), self._dc_class.get_name(), avatar_channel))
 
@@ -309,13 +301,15 @@ class StateObject(object):
             if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
 
                 if not state_object.owner_id:
+                    continue
 
-                    if state_object.dc_class.get_number() != self._dc_class.get_number():
-                        continue
+                self.handle_send_update(field, sender, state_object.owner_id, di)
 
-                    self.handle_send_update(field, sender, state_object.parent_id, di)
-                else:
-                    self.handle_send_update(field, sender, state_object.owner_id, di)
+        if self._do_id in excludes:
+            return
+
+        if not self._owner_id:
+            self.handle_send_update(field, sender, self._parent_id, di)
 
     def handle_send_generate(self, channel):
         datagram = io.NetworkDatagram()
@@ -335,6 +329,19 @@ class StateObject(object):
         self.append_required_data(datagram)
         self._network.handle_send_connection_datagram(datagram)
 
+    def handle_send_generate_broadcast(self, excludes=[]):
+        for state_object in self._network.object_manager.state_objects.values():
+
+            if state_object.do_id in excludes:
+                continue
+
+            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
+
+                if not state_object.owner_id:
+                    continue
+
+                self.handle_send_generate(state_object.owner_id)
+
     def handle_send_generates(self, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
@@ -352,6 +359,19 @@ class StateObject(object):
         datagram.add_uint64(self.do_id)
         self._network.handle_send_connection_datagram(datagram)
 
+    def handle_send_delete_broadcast(self, excludes=[]):
+        for state_object in self._network.object_manager.state_objects.values():
+
+            if state_object.do_id in excludes:
+                continue
+
+            if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
+
+                if not state_object.owner_id:
+                    continue
+
+                self.handle_send_delete(state_object.owner_id)
+
     def handle_delete_objects(self, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
@@ -365,17 +385,7 @@ class StateObject(object):
                 state_object.handle_send_delete(self._owner_id)
 
     def shutdown(self):
-        for state_object in self._network.object_manager.state_objects.values():
-
-            if state_object == self:
-                continue
-
-            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
-
-                if not state_object.owner_id:
-                    continue
-
-                self.handle_send_delete(state_object.owner_id)
+        self.handle_send_delete_broadcast()
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')

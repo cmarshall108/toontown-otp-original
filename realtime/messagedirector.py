@@ -209,15 +209,15 @@ class MessageInterface(object):
         message = Message(self.get_timestamp(), channel, sender, di.get_uint16(),
             io.NetworkDatagram(Datagram(di.get_remaining_bytes())))
 
-        self._messages.append(message)
         message.setup()
+        self._messages.append(message)
 
     def remove_message(self, message):
         if not self.has_message(message):
             return
 
-        message.shutdown()
         self._messages.remove(message)
+        message.shutdown()
 
     def setup(self):
         self.__send_task = task_mgr.add(self.__send_messages, self._network.get_unique_name(
