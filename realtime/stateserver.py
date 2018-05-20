@@ -231,7 +231,7 @@ class StateObject(object):
             if not field.is_broadcast():
                 self.handle_send_update(field, sender, self._owner_id, di)
             else:
-                self.handle_send_update_broadcast(field, sender, di)
+                self.handle_send_update_broadcast(field, sender, di, excludes=[self])
 
     def handle_send_changing_location(self, channel):
         datagram = io.NetworkDatagram()
