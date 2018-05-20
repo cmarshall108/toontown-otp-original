@@ -8,7 +8,6 @@ import random
 
 from panda3d.direct import DCPacker
 from realtime import io, types
-from game.OtpDoGlobals import *
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
 class Shard(object):
@@ -310,10 +309,8 @@ class StateObject(object):
             if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
                 continue
 
-            if state_object.parent_id != self._parent_id and state_object.zone_id != self._zone_id:
-                continue
-
-            state_object.handle_send_generate(self._owner_id)
+            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
+                state_object.handle_send_generate(self._owner_id)
 
     def handle_send_delete(self, channel):
         datagram = io.NetworkDatagram()
@@ -332,13 +329,8 @@ class StateObject(object):
             if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
                 continue
 
-            if state_object.parent_id != self._old_parent_id and state_object.zone_id != self._old_zone_id:
-                continue
-
-            if self._old_zone_id == OTP_ZONE_ID_OLD_QUIET_ZONE:
-                continue
-
-            state_object.handle_send_delete(self._owner_id)
+            if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
+                state_object.handle_send_delete(self._owner_id)
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')
