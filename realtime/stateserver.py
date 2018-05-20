@@ -224,14 +224,14 @@ class StateObject(object):
                     return
 
             if not field.is_broadcast():
-                self.handle_send_update(field, sender, self._parent_id, di)
+                self.handle_send_update(field, self._parent_id, sender, di)
             else:
                 self.handle_send_update_broadcast(field, sender, di, excludes=[self])
         else:
             if not field.is_broadcast():
-                self.handle_send_update(field, sender, self._owner_id, di)
+                self.handle_send_update(field, sender, self._parent_id, di)
             else:
-                self.handle_send_update_broadcast(field, sender, di, excludes=[self])
+                self.handle_send_update_broadcast(field, self._parent_id, di, excludes=[self])
 
     def handle_send_changing_location(self, channel):
         datagram = io.NetworkDatagram()
@@ -263,7 +263,7 @@ class StateObject(object):
         field_packer = DCPacker()
         field_packer.begin_pack(field)
 
-        if di.get_remaining_size() > 0:
+        if di.get_remaining_size():
             field_packer.pack_literal_value(di.get_remaining_bytes())
 
         field_packer.end_pack()
@@ -277,16 +277,12 @@ class StateObject(object):
             if state_object in excludes:
                 continue
 
-            if state_object.parent_id != self._parent_id and state_object.zone_id != self._zone_id:
-                continue
+            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
 
-            if state_object.dc_class.get_number() != self._dc_class.get_number():
-                continue
+                if not state_object.owner_id:
+                    continue
 
-            if not state_object.owner_id:
-                state_object.handle_send_update(field, sender, state_object.parent_id, di)
-            else:
-                state_object.handle_send_update(field, sender, state_object.owner_id, di)
+                self.handle_send_update(field, sender, state_object.owner_id, di)
 
     def handle_send_generate(self, channel):
         datagram = io.NetworkDatagram()

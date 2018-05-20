@@ -187,13 +187,10 @@ class LoadAccountFSM(ClientOperation):
         # add them to the account channel
         self.client.handle_set_channel_id(self._account_id << 32)
 
-        # call the callback our client object has specified,
-        # this will notify the game client of the successful login...
-        self._callback()
-
         # we're all done.
         self.ignoreAll()
         self.manager.stop_operation(self.client)
+        self._callback()
 
     def exitSetAccount(self):
         pass
@@ -301,11 +298,10 @@ class RetrieveAvatarsFSM(ClientOperation):
 
             avatar_list.append(avatar_data)
 
-        self._callback(avatar_list)
-
         # we're all done.
         self.ignoreAll()
         self.manager.stop_operation(self.client)
+        self._callback(avatar_list)
 
     def exitSetAvatars(self):
         pass
@@ -356,11 +352,10 @@ class CreateAvatarFSM(ClientOperation):
             self.manager.network.dc_loader.dclasses_by_name['Account'],
             new_fields)
 
-        self._callback(self._echo_context, avatar_id)
-
         # We're all done
         self.ignoreAll()
         self.manager.stop_operation(self.client)
+        self._callback(self._echo_context, avatar_id)
 
     def exitCreate(self):
         pass
@@ -443,11 +438,10 @@ class LoadAvatarFSM(ClientOperation):
         datagram.add_uint64(channel)
         self.manager.network.handle_send_connection_datagram(datagram)
 
-        self._callback(self._avatar_id)
-
         # we're all done.
         self.ignoreAll()
         self.manager.stop_operation(self.client)
+        self._callback(self._avatar_id)
 
     def exitActivate(self):
         pass
@@ -490,11 +484,10 @@ class SetNameFSM(ClientOperation):
             self.manager.network.dc_loader.dclasses_by_name['DistributedToon'],
             self._fields)
 
-        self._callback(self._avatar_id, self._wish_name)
-
         # We're all done
         self.ignoreAll()
         self.manager.stop_operation(self.client)
+        self._callback(self._avatar_id, self._wish_name)
 
     def exitSetName(self):
         pass
