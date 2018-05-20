@@ -8,6 +8,7 @@ import random
 
 from panda3d.direct import DCPacker
 from realtime import io, types
+from game.OtpDoGlobals import *
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
 class Shard(object):
@@ -327,6 +328,9 @@ class StateObject(object):
                 continue
 
             if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
+                continue
+
+            if state_object.zone_id == OTP_ZONE_ID_OLD_QUIET_ZONE:
                 continue
 
             if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:

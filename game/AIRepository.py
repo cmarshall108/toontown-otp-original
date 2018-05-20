@@ -6,6 +6,7 @@ from game.OtpDoGlobals import *
 from realtime.types import *
 from direct.distributed.AIZoneData import AIZoneDataStore
 from game.TimeManagerAI import TimeManagerAI
+from game.EstateManagerAI import EstateManagerAI
 from game.TTHoodAI import TTHoodAI
 from game.DDHoodAI import DDHoodAI
 
@@ -71,6 +72,9 @@ class AIRepository(OTPInternalRepository):
     def createGlobals(self):
         self.timeManager = TimeManagerAI(self)
         self.timeManager.generateWithRequired(OTP_ZONE_ID_OLD_QUIET_ZONE)
+
+        self.estateManager = EstateManagerAI(self)
+        self.estateManager.generateWithRequired(OTP_ZONE_ID_OLD_QUIET_ZONE)
 
     def createZones(self):
         if simbase.config.GetBool('want-toontown-central', False):
