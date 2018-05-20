@@ -319,8 +319,13 @@ class StateObject(object):
 
     def handle_send_generate(self, channel):
         datagram = io.NetworkDatagram()
-        datagram.add_header(channel, self._network.channel,
-            types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
+
+        if not self._has_other:
+            datagram.add_header(channel, self._network.channel,
+                types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
+        else:
+            datagram.add_header(channel, self._network.channel,
+                types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED_OTHER)
 
         datagram.add_uint64(self.do_id)
         datagram.add_uint64(self.parent_id)
