@@ -160,6 +160,19 @@ class StateObject(object):
 
         datagram.append_data(field_packer.get_string())
 
+    def setup(self):
+        for state_object in self._network.object_manager.state_objects.values():
+
+            if state_object == self:
+                continue
+
+            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
+
+                if not state_object.owner_id:
+                    continue
+
+                self.handle_send_generate(state_object.owner_id)
+
     def handle_internal_datagram(self, sender, message_type, di):
         if message_type == types.STATESERVER_OBJECT_SET_OWNER:
             self.handle_set_owner(sender, di)
@@ -323,9 +336,6 @@ class StateObject(object):
             if state_object.do_id in excludes:
                 continue
 
-            if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
-                continue
-
             if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
                 state_object.handle_send_generate(self._owner_id)
 
@@ -343,14 +353,24 @@ class StateObject(object):
             if state_object.do_id in excludes:
                 continue
 
-            if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
-                continue
-
             if state_object.zone_id == OTP_ZONE_ID_OLD_QUIET_ZONE:
                 continue
 
             if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
                 state_object.handle_send_delete(self._owner_id)
+
+    def shutdown(self):
+        for state_object in self._network.object_manager.state_objects.values():
+
+            if state_object == self:
+                continue
+
+            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
+
+                if not state_object.owner_id:
+                    continue
+
+                self.handle_send_delete(state_object.owner_id)
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')
@@ -370,11 +390,13 @@ class StateObjectManager(object):
             return
 
         self._state_objects[state_object.do_id] = state_object
+        state_object.setup()
 
     def remove_state_object(self, state_object):
         if not self.has_state_object(state_object.do_id):
             return
 
+        state_object.shutdown()
         del self._state_objects[state_object.do_id]
 
     def get_state_object(self, do_id):
