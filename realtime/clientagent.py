@@ -989,7 +989,7 @@ class Client(io.NetworkHandler):
             return
 
         datagram = io.NetworkDatagram()
-        datagram.add_header(do_id, self.channel,
+        datagram.add_header(types.STATESERVER_CHANNEL, self.channel,
             types.STATESERVER_OBJECT_UPDATE_FIELD)
 
         datagram.add_uint32(do_id)
