@@ -8,6 +8,7 @@ import random
 
 from panda3d.direct import DCPacker
 from realtime import io, types
+from game.OtpDoGlobals import *
 from direct.directnotify.DirectNotifyGlobal import directNotify
 
 class Shard(object):
@@ -174,40 +175,26 @@ class StateObject(object):
     def handle_set_zone(self, sender, di):
         zone_id = di.get_uint32()
 
+        self._old_parent_id = self._parent_id
         self._old_zone_id = self._zone_id
+
         self._zone_id = zone_id
 
-        # determine if the owner of this object is an AI or if the owner
-        # is a client...
-        if self._network.shard_manager.has_shard(self._owner_id):
-            # tell our parent that we are moving zones under them,
-            # they should know about this because; we are only changing zones
-            # and not parent interests....
-            datagram = io.NetworkDatagram()
-            datagram.add_header(self._owner_id, self._network.channel,
-                types.STATESERVER_OBJECT_CHANGING_LOCATION)
+        # delete any existing objects within our new interest set,
+        # exclude our own object since thats a local object...
+        self.handle_delete_objects(excludes=[self])
 
-            datagram.add_uint32(self._do_id)
-            datagram.add_uint32(self._parent_id)
-            datagram.add_uint32(self._zone_id)
-            self._network.handle_send_connection_datagram(datagram)
-        else:
-            # if we have an owner, tell them that we've sent all of the initial zone
-            # objects in the new interest set...
-            datagram = io.NetworkDatagram()
-            datagram.add_header(self._owner_id, self._network.channel,
-                types.STATESERVER_OBJECT_SET_ZONE_RESP)
+        # if we have an owner, tell them that we've sent all of the initial zone
+        # objects in the new interest set...
+        self.handle_send_set_zone(self._owner_id, self._zone_id, self._old_zone_id)
 
-            datagram.add_uint32(self._old_zone_id)
-            datagram.add_uint32(self._zone_id)
-            self._network.handle_send_connection_datagram(datagram)
-
-            # update our interest set.
-            self.update_interests()
+        # generate any new objects within our new interest set,
+        # exclude our own object since thats a local object...
+        self.handle_send_generates(excludes=[self])
 
     def handle_update_field(self, sender, di):
         field_id = di.get_uint16()
-        field = self._dc_class.get_inherited_field(field_id)
+        field = self._dc_class.get_field_by_index(field_id)
 
         if not field:
             self.notify.warning('Failed to update field: %d dclass: %s, unknown field!' % (
@@ -235,17 +222,40 @@ class StateObject(object):
                         field.get_name(), self._dc_class.get_name()))
 
                     return
-        else:
-            return
 
+            if not field.is_broadcast():
+                self.handle_send_update(field, sender, self._parent_id, di)
+            else:
+                self.handle_send_update_broadcast(field, sender, di, excludes=[self])
+        else:
+            if not field.is_broadcast():
+                self.handle_send_update(field, sender, self._owner_id, di)
+            else:
+                self.handle_send_update_broadcast(field, sender, di)
+
+    def handle_send_changing_location(self, channel):
         datagram = io.NetworkDatagram()
+        datagram.add_header(channel, self._network.channel,
+            types.STATESERVER_OBJECT_CHANGING_LOCATION)
 
-        if not self._network.shard_manager.has_shard(sender):
-            datagram.add_header(self._parent_id, sender,
-                types.STATESERVER_OBJECT_UPDATE_FIELD)
-        else:
-            datagram.add_header(self._owner_id, sender,
-                types.STATESERVER_OBJECT_UPDATE_FIELD)
+        datagram.add_uint32(self._do_id)
+        datagram.add_uint32(self._parent_id)
+        datagram.add_uint32(self._zone_id)
+        self._network.handle_send_connection_datagram(datagram)
+
+    def handle_send_set_zone(self, channel, zone_id, old_zone_id):
+        datagram = io.NetworkDatagram()
+        datagram.add_header(channel, self._network.channel,
+            types.STATESERVER_OBJECT_SET_ZONE_RESP)
+
+        datagram.add_uint32(old_zone_id)
+        datagram.add_uint32(zone_id)
+        self._network.handle_send_connection_datagram(datagram)
+
+    def handle_send_update(self, field, sender, channel, di):
+        datagram = io.NetworkDatagram()
+        datagram.add_header(channel, sender,
+            types.STATESERVER_OBJECT_UPDATE_FIELD)
 
         datagram.add_uint32(self._do_id)
         datagram.add_uint16(field.get_number())
@@ -261,43 +271,74 @@ class StateObject(object):
         datagram.append_data(field_packer.get_string())
         self._network.handle_send_connection_datagram(datagram)
 
-    def update_interests(self):
+    def handle_send_update_broadcast(self, field, sender, di, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
-            # do not send our own object to be generated in the zone,
-            # since this is a message for a client owned toon object...
-            if state_object == self:
+            if state_object in excludes:
                 continue
 
-            # ensure this object's interest is within the client's owned object's
-            # interest scope, if so; then send generate for the object...
-            if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
-                datagram = io.NetworkDatagram()
-                datagram.add_header(self._owner_id, self._network.channel,
-                    types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
+            if state_object.parent_id != self._parent_id and state_object.zone_id != self._zone_id:
+                continue
 
-                datagram.add_uint64(state_object.do_id)
-                datagram.add_uint64(state_object.parent_id)
-                datagram.add_uint32(state_object.zone_id)
-                datagram.add_uint16(state_object.dc_class.get_number())
+            if state_object.dc_class.get_number() != self._dc_class.get_number():
+                continue
 
-                state_object.append_required_data(datagram)
-                self._network.handle_send_connection_datagram(datagram)
+            if not state_object.owner_id:
+                state_object.handle_send_update(field, sender, state_object.parent_id, di)
+            else:
+                state_object.handle_send_update(field, sender, state_object.owner_id, di)
 
-            # attempt to tell the client to delete this object from it's local
-            # DO array, this is done when the avatar moves from another zone or parent...
-            if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
-                datagram = io.NetworkDatagram()
-                datagram.add_header(self._owner_id, self._network.channel,
-                    types.STATESERVER_OBJECT_DELETE_RAM)
+    def handle_send_generate(self, channel):
+        datagram = io.NetworkDatagram()
+        datagram.add_header(channel, self._network.channel,
+            types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED)
 
-                datagram.add_uint64(state_object.do_id)
-                self._network.handle_send_connection_datagram(datagram)
+        datagram.add_uint64(self.do_id)
+        datagram.add_uint64(self.parent_id)
+        datagram.add_uint32(self.zone_id)
+        datagram.add_uint16(self.dc_class.get_number())
 
-                # reset the object's old interest sets to declare that we've cleared
-                # all of it's old data...
-                self._old_parent_id = 0
-                self._old_zone_id = 0
+        self.append_required_data(datagram)
+        self._network.handle_send_connection_datagram(datagram)
+
+    def handle_send_generates(self, excludes=[]):
+        for state_object in self._network.object_manager.state_objects.values():
+
+            if state_object in excludes:
+                continue
+
+            if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
+                continue
+
+            if state_object.parent_id != self._parent_id and state_object.zone_id != self._zone_id:
+                continue
+
+            state_object.handle_send_generate(self._owner_id)
+
+    def handle_send_delete(self, channel):
+        datagram = io.NetworkDatagram()
+        datagram.add_header(channel, self._network.channel,
+            types.STATESERVER_OBJECT_DELETE_RAM)
+
+        datagram.add_uint64(self.do_id)
+        self._network.handle_send_connection_datagram(datagram)
+
+    def handle_delete_objects(self, excludes=[]):
+        for state_object in self._network.object_manager.state_objects.values():
+
+            if state_object in excludes:
+                continue
+
+            if self._parent_id == self._old_parent_id and self._zone_id == self._old_zone_id:
+                continue
+
+            if state_object.parent_id != self._old_parent_id and state_object.zone_id != self._old_zone_id:
+                continue
+
+            if self._old_zone_id == OTP_ZONE_ID_OLD_QUIET_ZONE:
+                continue
+
+            state_object.handle_send_delete(self._owner_id)
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')
@@ -411,8 +452,6 @@ class StateServer(io.NetworkConnector):
             return
 
         state_object = StateObject(self, do_id, parent_id, zone_id, dc_class, has_other, di)
-        state_object.owner_id = sender
-
         self._object_manager.add_state_object(state_object)
 
     def handle_object_update_field(self, sender, di):
