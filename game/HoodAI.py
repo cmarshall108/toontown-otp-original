@@ -10,3 +10,9 @@ class HoodAI:
 	def createObjects(self):
 		self.notify.info('Created objects for hood %s in zone %d.' % (
 			self.__class__.__name__, self.zoneId))
+
+		if base.config.GetBool('want-classic-chars'):
+			self.createClassicChars()
+
+	def createClassicChars(self):
+		pass

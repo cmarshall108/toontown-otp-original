@@ -11,10 +11,10 @@ class DDHoodAI(HoodAI):
 		HoodAI.__init__(self, air, ToontownGlobals.DonaldsDock)
 
 	def createObjects(self):
+		HoodAI.createObjects(self)
+
 		if simbase.config.GetBool('want-boat', False):
 			self.createBoat()
-
-		HoodAI.createObjects(self)
 
 	def createBoat(self):
 		self.boat = DistributedBoatAI(self.air)

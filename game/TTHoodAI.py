@@ -17,8 +17,7 @@ class TTHoodAI(HoodAI):
 		self.doors = {}
 
 	def createObjects(self):
-		if base.config.GetBool('want-classic-chars', False):
-			self.createChars()
+		HoodAI.createObjects(self)
 
 		if simbase.config.GetBool('want-fishing-spots', False):
 			self.createFishingSpots()
@@ -26,11 +25,9 @@ class TTHoodAI(HoodAI):
 		if simbase.config.GetBool('want-doors', False):
 			self.createDoors()
 
-		HoodAI.createObjects(self)
-
-	def createChars(self):
-		self.DistributedMickey = DistributedMickeyAI(self.air)
-		self.DistributedMickey.generateWithRequired(self.zoneId)
+	def createClassicChars(self):
+		self.classicChar = DistributedMickeyAI(self.air)
+		self.classicChar.generateWithRequired(self.zoneId)
 
 	def createFishingSpots(self):
 		self.fishingSpots[0] = DistributedFishingSpotAI(self.air)

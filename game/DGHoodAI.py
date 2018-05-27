@@ -1,25 +1,25 @@
+from direct.directnotify.DirectNotifyGlobal import directNotify
 from game.HoodAI import HoodAI
+from game import ToontownGlobals
 from game.DistributedGoofyAI import DistributedGoofyAI
 from game.DistributedDGFlowerAI import DistributedDGFlowerAI
 
 class DGHoodAI(HoodAI):
+	notify = directNotify.newCategory('DGHoodAI')
 
-	def __init__(self, air, zoneId=5000):
-		HoodAI.__init__(self, air, zoneId)
+	def __init__(self, air):
+		HoodAI.__init__(self, air, ToontownGlobals.DaisyGardens)
 
-	def generateObjectsInZone(self):
-		HoodAI.generateObjectsInZone(self)
+	def createObjects(self):
+		HoodAI.createObjects(self)
 
-		if base.config.GetBool('want-classic-chars'):
-			self.createClassicChars()
-
-		self.createDGFlower()
+		if simbase.config.GetBool('want-flower', False):
+			self.createFlower()
 
 	def createClassicChars(self):
-		self.DistributedGoofy = DistributedGoofyAI(self.air)
-		self.DistributedGoofy.setWalk('0', '0')
-		self.DistributedGoofy.generateWithRequired(self.zoneId)
+		self.classicChar = DistributedGoofyAI(self.air)
+		self.classicChar.generateWithRequired(self.zoneId)
 
-	def createDGFlower(self):
-		self.DistributedDGFlower = DistributedDGFlowerAI(self.air, height=10)
-		self.DistributedDGFlower.generateWithRequired(self.zoneId)
+	def createFlower(self):
+		self.flower = DistributedDGFlowerAI(self.air)
+		self.flower.generateWithRequired(self.zoneId)

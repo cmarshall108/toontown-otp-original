@@ -1,67 +1,54 @@
-from direct.distributed.DistributedObjectAI import DistributedObjectAI
-from direct.distributed.ClockDelta import *
 import random
 
+from direct.distributed.DistributedObjectAI import DistributedObjectAI
+from direct.distributed.ClockDelta import *
+
+
+ChangeDirectionDebounce = 1.0
+ChangeDirectionTime = 1.0
+
 class DistributedMMPianoAI(DistributedObjectAI):
-    MM_PIANO_STARTING_SPEED = 3.0
-    MM_PIANO_MAX_SPEED = 9.5
-
-    MM_PIANO_STARTING_DIRECTION = 360
-    MM_PIANO_MAX_DIRECTION = -360
-
-    rotationDirections = [
-        MM_PIANO_STARTING_DIRECTION,
-        MM_PIANO_MAX_DIRECTION
-    ]
 
     def __init__(self, air):
         DistributedObjectAI.__init__(self, air)
-        self.currentSpeed = self.MM_PIANO_STARTING_SPEED
-        self.currentRotation = self.MM_PIANO_STARTING_DIRECTION
-    
+
+        self.rpm = ChangeDirectionTime
+        self.direction = 1
+        self.offset = ChangeDirectionDebounce
+        self.timestamp = 0
+
     def generate(self):
         DistributedObjectAI.generate(self)
 
-    def announceGenerate(self):
-        DistributedObjectAI.announceGenerate(self)
-
-        # Set the default speed on generate.
-        self.d_setSpeed(self.currentSpeed, self.currentRotation, globalClockDelta.getRealNetworkTime())
-    
-    def avatarEnter(self):
-        DistributedObjectAI.avatarEnter(self)
+        self.d_setSpeed(self.rpm, self.offset)
 
     def requestSpeedUp(self):
-        if self.currentSpeed < self.MM_PIANO_MAX_SPEED:
-            self.currentSpeed += 1.0
-        else:
-            self.currentSpeed = self.MM_PIANO_MAX_SPEED
+        avatar = self.air.doId2do.get(self.air.getAvatarIdFromSender())
 
-        self.d_setSpeed(self.currentSpeed, self.currentRotation, globalClockDelta.getRealNetworkTime())
-        self.d_playSpeedUp(self.air.getAvatarIdFromSender())
+        if not avatar:
+            return
+
+        self.rpm += (ChangeDirectionTime * self.direction)
+        self.rpm = max(0.0, min(self.rpm, 360.0))
+        self.d_setSpeed(self.rpm, self.offset)
+        self.d_playSpeedUp(avatar.doId)
 
     def requestChangeDirection(self):
-        #if self.currentRotation == self.MM_PIANO_MAX_DIRECTION:
-        #    self.currentRotation = self.MM_PIANO_STARTING_DIRECTION
-        #else:
-        #    self.currentRotation = self.MM_PIANO_MAX_DIRECTION
+        avatar = self.air.doId2do.get(self.air.getAvatarIdFromSender())
 
-        self.d_setSpeed(self.MM_PIANO_MAX_DIRECTION, self.MM_PIANO_MAX_DIRECTION, globalClockDelta.getRealNetworkTime())
-        self.d_playChangeDirection(self.air.getAvatarIdFromSender())
+        if not avatar:
+            return
 
-    def d_setSpeed(self, rpm, offset, timestamp):
-        self.sendUpdate('setSpeed', [
-            rpm, 
-            offset, 
-            timestamp])
+        self.direction = -self.direction
+        self.rpm = self.rpm * -self.direction
+        self.d_setSpeed(self.rpm, self.offset)
+        self.d_playChangeDirection(avatar.doId)
+
+    def d_setSpeed(self, rpm, offset):
+        self.sendUpdate('setSpeed', [rpm, offset, globalClockDelta.getRealNetworkTime(bits=16)])
 
     def d_playSpeedUp(self, avatarId):
-        self.sendUpdate('playSpeedUp', [
-            avatarId])
+        self.sendUpdate('playSpeedUp', [avatarId])
 
     def d_playChangeDirection(self, avatarId):
-        self.sendUpdate('playChangeDirection', [
-            avatarId])
-
-	def avatarExit(self):
-		DistributedObjectAI.avatarExit(self)
+        self.sendUpdate('playChangeDirection', [avatarId])

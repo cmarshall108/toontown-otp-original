@@ -10,6 +10,7 @@ from game.EstateManagerAI import EstateManagerAI
 from game.TTHoodAI import TTHoodAI
 from game.DDHoodAI import DDHoodAI
 from game.DGHoodAI import DGHoodAI
+from game.MMHoodAI import MMHoodAI
 
 class AIRepository(OTPInternalRepository):
     notify = DirectNotifyGlobal.directNotify.newCategory('AIRepository')
@@ -83,9 +84,12 @@ class AIRepository(OTPInternalRepository):
 
         if simbase.config.GetBool('want-donalds-dock', False):
             self.hoods.append(DDHoodAI(self))
-            
+
         if simbase.config.GetBool('want-daisys-garden', False):
             self.hoods.append(DGHoodAI(self))
+
+        if simbase.config.GetBool('want-minnies-melody-land', False):
+            self.hoods.append(MMHoodAI(self))
 
         for hood in self.hoods:
             hood.createObjects()

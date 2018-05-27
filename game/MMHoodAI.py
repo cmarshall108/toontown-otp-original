@@ -1,25 +1,26 @@
+from direct.directnotify.DirectNotifyGlobal import directNotify
 from game.HoodAI import HoodAI
+from game import ToontownGlobals
+from game import DoorTypes
 from game.DistributedMinnieAI import DistributedMinnieAI
 from game.DistributedMMPianoAI import DistributedMMPianoAI
 
 class MMHoodAI(HoodAI):
+	notify = directNotify.newCategory('MMHoodAI')
 
-	def __init__(self, air, zoneId=4000):
-		HoodAI.__init__(self, air, zoneId)
+	def __init__(self, air):
+		HoodAI.__init__(self, air, ToontownGlobals.MinniesMelodyland)
 
-	def generateObjectsInZone(self):
-		HoodAI.generateObjectsInZone(self)
+	def createObjects(self):
+		HoodAI.createObjects(self)
 
-		if base.config.GetBool('want-classic-chars'):
-			self.createClassicChars()
-
-		self.createMMPiano()
+		if simbase.config.GetBool('want-piano', False):
+			self.createPiano()
 
 	def createClassicChars(self):
-		self.DistributedMinnie = DistributedMinnieAI(self.air)
-		self.DistributedMinnie.setWalk('0', '0')
-		self.DistributedMinnie.generateWithRequired(self.zoneId)
+		self.classicChar = DistributedMinnieAI(self.air)
+		self.classicChar.generateWithRequired(self.zoneId)
 
-	def createMMPiano(self):
-		self.DistributedMMPiano = DistributedMMPianoAI(self.air)
-		self.DistributedMMPiano.generateWithRequired(self.zoneId)
+	def createPiano(self):
+		self.piano = DistributedMMPianoAI(self.air)
+		self.piano.generateWithRequired(self.zoneId)
