@@ -470,7 +470,7 @@ class StateServer(io.NetworkConnector):
 
         for state_object in self._object_manager.state_objects.values():
 
-            if state_object._parent_id == shard.channel:
+            if state_object.parent_id == shard.channel:
                 self._object_manager.remove_state_object(state_object)
 
         self._shard_manager.remove_shard(shard.channel)
