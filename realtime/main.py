@@ -13,8 +13,9 @@ if os.path.exists('config/general.prc'):
     loadPrcFile('config/general.prc')
 
 from panda3d.direct import get_config_showbase
-from direct.task.TaskManagerGlobal import taskMgr as task_mgr
 from direct.directnotify.DirectNotifyGlobal import directNotify
+from direct.stdpy import threading
+from direct.task.TaskManagerGlobal import taskMgr as task_mgr
 
 __builtin__.config = get_config_showbase()
 __builtin__.task_mgr = task_mgr
@@ -26,11 +27,18 @@ notify = directNotify.newCategory('Main')
 notify.setInfo(True)
 
 def setup_component(cls, *args, **kwargs):
-    notify.info('Starting component: %s...' % (
-        cls.__name__))
-
     component = cls(*args, **kwargs)
-    component.setup()
+
+    def threaded(component=component):
+        notify.info('Starting component: %s...' % (
+            cls.__name__))
+
+        component.setup()
+
+    t = threading.Thread(target=threaded)
+    t.daemon = True
+    t.start()
+
     return component
 
 def shutdown_component(cls):
