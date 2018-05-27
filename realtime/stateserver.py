@@ -242,15 +242,7 @@ class StateObject(object):
                 self.handle_send_update_broadcast(field, sender, di, excludes=[avatar_id])
         else:
             if not field.is_broadcast():
-                avatar_channel = self._network.get_puppet_connection_channel(channel)
-
-                if not avatar_channel:
-                    self.notify.warning('Cannot handle field update for field: %s dclass: %s, bad avatar channel: %d!' % (
-                        field.get_name(), self._dc_class.get_name(), avatar_channel))
-
-                    return
-
-                self.handle_send_update(field, self._parent_id, avatar_channel, di)
+                self.handle_send_update(field, self._parent_id, channel, di)
             else:
                 self.handle_send_update_broadcast(field, self._parent_id, di, excludes=[self.do_id])
 
