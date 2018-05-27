@@ -42,6 +42,12 @@ class ShardManager(object):
 
         del self._shards[channel]
 
+    def get_shard(self, channel):
+        if not self.has_shard(channel):
+            return None
+
+        return self._shards[channel]
+
     def get_shards(self):
         return self._shards.values()
 
@@ -445,7 +451,7 @@ class StateServer(io.NetworkConnector):
             state_object = self._object_manager.get_state_object(channel)
 
             if not state_object:
-                self.notify.warning('Received an unknown message type: %d from channel: %d!' % (
+                self.notify.debug('Received an unknown message type: %d from channel: %d!' % (
                     message_type, sender))
 
                 return
@@ -456,7 +462,18 @@ class StateServer(io.NetworkConnector):
         self._shard_manager.add_shard(sender, di.getString(), di.get_uint32())
 
     def handle_remove_shard(self, sender):
-        self._shard_manager.remove_shard(sender)
+        shard = self._shard_manager.get_shard(sender)
+
+        if not shard:
+            self.notify.warning('Cannot remove shard: %d, does not exist!' % (
+                sender))
+
+        for state_object in self._object_manager.state_objects.values():
+
+            if state_object._parent_id == shard.channel:
+                self._object_manager.remove_state_object(state_object)
+
+        self._shard_manager.remove_shard(shard.channel)
 
     def handle_get_shard_list(self, sender, di):
         datagram = io.NetworkDatagram()
