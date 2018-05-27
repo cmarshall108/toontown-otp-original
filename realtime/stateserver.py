@@ -467,6 +467,8 @@ class StateServer(io.NetworkConnector):
         if not shard:
             self.notify.warning('Cannot remove shard: %d, does not exist!' % (
                 sender))
+            
+            return
 
         for state_object in self._object_manager.state_objects.values():
 
