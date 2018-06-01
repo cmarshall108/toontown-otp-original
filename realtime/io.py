@@ -555,9 +555,6 @@ class NetworkConnector(NetworkManager):
         Sends a datagram to our connection
         """
 
-        if not datagram.get_length():
-            return
-
         self.__writer.send(datagram, self.__socket)
 
     def handle_datagram(self, channel, sender, message_type, di):
@@ -702,7 +699,7 @@ class NetworkHandler(NetworkManager):
         Places a new datagram in the data queue
         """
 
-        if self.is_queued(datagram) or not datagram.get_length():
+        if self.is_queued(datagram):
             return
 
         self.__data.append(datagram)
@@ -910,7 +907,7 @@ class NetworkListener(NetworkManager):
         Sends a datagram to a specific connection
         """
 
-        if not datagram.get_length() or not self.__has_handler(connection):
+        if not self.__has_handler(connection):
             return
 
         self.__writer.send(datagram, connection)
