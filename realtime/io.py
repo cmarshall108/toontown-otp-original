@@ -546,10 +546,9 @@ class NetworkConnector(NetworkManager):
             return
 
         di = NetworkDatagramIterator(datagram)
+        code = di.get_uint8()
 
-        if di.get_uint8() == 1:
-            self.handle_datagram(di.get_uint64(), di.get_uint64(),
-                di.get_uint16(), di)
+        self.handle_datagram(di.get_uint64(), di.get_uint64(), di.get_uint16(), di)
 
     def handle_send_connection_datagram(self, datagram):
         """
