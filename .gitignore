@@ -105,4 +105,7 @@ ENV/
 
 # database
 *.json
+*.yaml
+*.yml
+*.toml
 databases/
