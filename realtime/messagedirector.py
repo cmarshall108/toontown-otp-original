@@ -179,7 +179,7 @@ class MessageInterface(object):
         self._network = network
 
         self._messages = []
-        self._message_timeout = config.GetFloat('messagedirector-message-timeout', 1.0)
+        self._message_timeout = config.GetFloat('messagedirector-message-timeout', 5.0)
 
         self.__send_task = None
 
