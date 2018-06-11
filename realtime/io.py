@@ -890,6 +890,16 @@ class NetworkListener(NetworkManager):
             if handler.channel == channel:
                 return handler
 
+            if self.get_account_connection_channel(self.get_account_id_from_channel_code(
+                self.channel)) == channel:
+
+                return handler
+
+            if self.get_puppet_connection_channel(self.get_avatar_id_from_connection_channel(
+                self.channel)) == channel:
+
+                return handler
+
         return None
 
     def handle_send_datagram(self, datagram, connection):
