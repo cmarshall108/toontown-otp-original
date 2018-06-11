@@ -4,6 +4,8 @@
  * Licensing information can found in 'LICENSE', which is part of this source code package.
 """
 
+import Queue
+
 from panda3d.core import QueuedConnectionManager, QueuedConnectionListener, QueuedConnectionReader, \
     ConnectionWriter, PointerToConnection, NetAddress, NetDatagram, DatagramIterator, Filename
 
@@ -598,8 +600,7 @@ class NetworkHandler(NetworkManager):
         self._channel = channel
         self._allocated_channel = channel
 
-        self.__data = []
-
+        self._readable = Queue.Queue()
         self.__update_task = None
 
     @property
@@ -675,10 +676,10 @@ class NetworkHandler(NetworkManager):
         Pops a datagram from the queue and handles it
         """
 
-        if not len(self.__data):
+        if self._readable.empty():
             return task.cont
 
-        datagram = self.__data.pop()
+        datagram = self._readable.get_nowait()
         di = NetworkDatagramIterator(datagram)
 
         if not di.get_remaining_size():
@@ -687,32 +688,12 @@ class NetworkHandler(NetworkManager):
         self.handle_datagram(di)
         return task.cont
 
-    def is_queued(self, datagram):
-        """
-        Returns true if the datagram is queued else False
-        """
-
-        return datagram in self.__data
-
     def queue(self, datagram):
         """
         Places a new datagram in the data queue
         """
 
-        if self.is_queued(datagram):
-            return
-
-        self.__data.append(datagram)
-
-    def dequeue(self, datagram):
-        """
-        Removes a datagram from the data queue
-        """
-
-        if not self.is_queued(datagram):
-            return
-
-        self.__data.remove(datagram)
+        self._readable.put_nowait(datagram)
 
     def handle_send_datagram(self, datagram):
         """
