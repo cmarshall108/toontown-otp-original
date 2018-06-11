@@ -44,17 +44,32 @@ class TTHoodAI(HoodAI):
 
 	def createDoors(self):
 		self.interiorZone = self.air.allocateZone()
-		self.interior = DistributedToonInteriorAI(self.air, zoneId=self.interiorZone, blockNumber=20)
+
+		self.interior = DistributedToonInteriorAI(self.air, self.interiorZone, 20)
 		self.interior.generateWithRequired(self.interiorZone)
 
-		self.doors[0] = DistributedDoorAI(self.air, zoneId=self.zoneId, blockNumber=20)
-		self.doors[0].setDoorType(DoorTypes.EXT_HQ)
-		self.doors[0].setSwing(0)
-		self.doors[0].generateWithRequired(self.zoneId)
-		self.doors[0].setOtherZoneIdAndDoId(self.interiorZone, doId=self.interior.getDoId())
+		self.doors[0] = DistributedDoorAI(self.air, self.interior.blockNumber,
+			DoorTypes.EXT_HQ, doorIndex=0)
 
-		self.doors[1] = DistributedDoorAI(self.air, zoneId=self.interiorZone, blockNumber=20)
-		self.doors[1].setDoorType(DoorTypes.INT_HQ)
-		self.doors[1].setSwing(0)
+		self.doors[0].generateWithRequired(self.zoneId)
+
+		self.doors[1] = DistributedDoorAI(self.air, self.interior.blockNumber,
+			DoorTypes.EXT_HQ, doorIndex=1)
+
 		self.doors[1].generateWithRequired(self.zoneId)
-		self.doors[1].setOtherZoneIdAndDoId(self.zoneId, doId=self.doors[0].getDoId())
+
+		self.doors[2] = DistributedDoorAI(self.air, self.interior.blockNumber,
+			DoorTypes.INT_HQ, doorIndex=0)
+
+		self.doors[2].generateWithRequired(self.interiorZone)
+
+		self.doors[3] = DistributedDoorAI(self.air, self.interior.blockNumber,
+			DoorTypes.INT_HQ, doorIndex=1)
+
+		self.doors[3].generateWithRequired(self.interiorZone)
+
+		self.doors[0].setOtherDoor(self.doors[2])
+		self.doors[1].setOtherDoor(self.doors[3])
+
+		self.doors[2].setOtherDoor(self.doors[0])
+		self.doors[3].setOtherDoor(self.doors[1])

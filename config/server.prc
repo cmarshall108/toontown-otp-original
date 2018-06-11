@@ -8,6 +8,6 @@ want-minnies-melody-land #t
 want-classic-chars #t
 want-boat #t
 want-fishing-spots #t
-want-doors #f
+want-doors #t
 want-flower #t
 want-piano #t

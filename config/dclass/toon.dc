@@ -967,13 +967,13 @@ dclass DistributedDoor : DistributedObject {
   rejectEnter(int8 reason) p2p;
 
   // Tell all nearby that a toon is entering the door queue:
-  toonEnter(uint32 avatarID) broadcast;
+  toonEnter(uint32 avatarId) broadcast;
 
   // Tell all nearby that a toon is exiting the door or door queue:
-  toonExit(uint32 avatarID) broadcast;
+  toonExit(uint32 avatarId) broadcast;
 
   // Suits also enter doors.  But they don't exit them.
-  suitEnter(uint32 avatarID) broadcast;
+  suitEnter(uint32 avatarId) broadcast;
 
   // How the server tells the client what state to enter into
   // Used for states that want a timestamp
@@ -1060,7 +1060,7 @@ dclass DistributedAnimatedProp : DistributedObject {
   // Tell all nearby that a toon is interacting with the prop:
   setAvatarInteract(uint32 avatarId) required broadcast ram;
 
-  // Toon avatarID is no longer interacting with the prop:
+  // Toon avatarId is no longer interacting with the prop:
   avatarExit(uint32 avatarId) broadcast;
 
   // How the server tells the client what state to enter into
