@@ -490,10 +490,10 @@ class NetworkConnector(NetworkManager):
             self.register_for_channel(self._channel)
 
         self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name(
-            'read-incoming'))
+            'read-incoming'), taskChain=task_chain)
 
         self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name(
-            'listen-disconnect'))
+            'listen-disconnect'), taskChain=task_chain)
 
     def register_for_channel(self, channel):
         """
@@ -640,7 +640,7 @@ class NetworkHandler(NetworkManager):
     def setup(self):
         if not self.__update_task:
             self.__update_task = task_mgr.add(self.__update, self.get_unique_name(
-                'update-handler'))
+                'update-handler'), taskChain=task_chain)
 
         if self._channel:
             self.register_for_channel(self._channel)
@@ -784,13 +784,13 @@ class NetworkListener(NetworkManager):
             self.__listener.add_connection(self.__socket)
 
         self.__listen_task = task_mgr.add(self.__listen_incoming, self.get_unique_name(
-            'listen-incoming'))
+            'listen-incoming'), taskChain=task_chain)
 
         self.__read_task = task_mgr.add(self.__read_incoming, self.get_unique_name(
-            'read-incoming'))
+            'read-incoming'), taskChain=task_chain)
 
         self.__disconnect_task = task_mgr.add(self.__listen_disconnect, self.get_unique_name(
-            'listen-disconnect'))
+            'listen-disconnect'), taskChain=task_chain)
 
     def __listen_incoming(self, task):
         """

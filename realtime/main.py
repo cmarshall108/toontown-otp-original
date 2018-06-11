@@ -14,11 +14,12 @@ if os.path.exists('config/general.prc'):
 
 from panda3d.direct import get_config_showbase
 from direct.directnotify.DirectNotifyGlobal import directNotify
-from direct.stdpy import threading
 from direct.task.TaskManagerGlobal import taskMgr as task_mgr
 
 __builtin__.config = get_config_showbase()
 __builtin__.task_mgr = task_mgr
+__builtin__.task_chain = task_mgr.setupTaskChain('mainloop-taskchain',
+    numThreads=4, frameSync=False)
 
 from realtime import io, types, clientagent, messagedirector, \
     stateserver, database
@@ -27,17 +28,11 @@ notify = directNotify.newCategory('Main')
 notify.setInfo(True)
 
 def setup_component(cls, *args, **kwargs):
+    notify.info('Starting component: %s...' % (
+        cls.__name__))
+
     component = cls(*args, **kwargs)
-
-    def threaded(component=component):
-        notify.info('Starting component: %s...' % (
-            cls.__name__))
-
-        component.setup()
-
-    t = threading.Thread(target=threaded)
-    t.daemon = True
-    t.start()
+    component.setup()
 
     return component
 

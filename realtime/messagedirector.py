@@ -221,7 +221,7 @@ class MessageInterface(object):
 
     def setup(self):
         self.__send_task = task_mgr.add(self.__send_messages, self._network.get_unique_name(
-            'send-messages'))
+            'send-messages'), taskChain=task_chain)
 
     def __send_messages(self, task):
         for message in self._messages:
