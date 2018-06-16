@@ -22,6 +22,7 @@ from game import DistributedDoor/AI
 from game import EstateManager/AI
 from game import DistributedMMPiano/AI
 from game import DistributedToonInterior/AI
+from game import DistributedHQInterior/AI
 
 // The most fundamental class
 dclass DistributedObject {

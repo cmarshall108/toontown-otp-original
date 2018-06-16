@@ -5,7 +5,7 @@ from game import DoorTypes
 from game.DistributedMickeyAI import DistributedMickeyAI
 from game.DistributedFishingSpotAI import DistributedFishingSpotAI
 from game.DistributedDoorAI import DistributedDoorAI
-from game.DistributedToonInteriorAI import DistributedToonInteriorAI
+from game.DistributedHQInteriorAI import DistributedHQInteriorAI
 
 class TTHoodAI(HoodAI):
 	notify = directNotify.newCategory('TTHoodAI')
@@ -43,9 +43,10 @@ class TTHoodAI(HoodAI):
 		self.fishingSpots[2].generateWithRequired(self.zoneId)
 
 	def createDoors(self):
-		self.interiorZone = self.air.allocateZone()
+		blockNumber = 20
+		self.interiorZone = self.zoneId - self.zoneId % 100 + 500 + blockNumber
 
-		self.interior = DistributedToonInteriorAI(self.air, self.interiorZone, 20)
+		self.interior = DistributedHQInteriorAI(self.air, self.interiorZone, blockNumber)
 		self.interior.generateWithRequired(self.interiorZone)
 
 		self.doors[0] = DistributedDoorAI(self.air, self.interior.blockNumber,
