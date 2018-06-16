@@ -194,6 +194,10 @@ class StateObject(object):
         self.handle_delete_objects(excludes=[self.do_id])
         self.handle_send_delete_broadcast(excludes=[self.do_id])
 
+        # send generates for the quite zone objects before we change the avatar's
+        # zone so that they always have interest in those objects...
+        self.handle_send_generates(quietZone=True, excludes=[self.do_id])
+
         # if we have an owner, tell them that we've sent all of the initial zone
         # objects in the new interest set...
         self.handle_send_set_zone(self._owner_id, self._zone_id, self._old_zone_id)
@@ -340,10 +344,13 @@ class StateObject(object):
 
                 self.handle_send_generate(state_object.owner_id)
 
-    def handle_send_generates(self, excludes=[]):
+    def handle_send_generates(self, quietZone=False, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
             if state_object.do_id in excludes:
+                continue
+
+            if state_object.zone_id == OTP_ZONE_ID_OLD_QUIET_ZONE and not quietZone:
                 continue
 
             if state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id:
