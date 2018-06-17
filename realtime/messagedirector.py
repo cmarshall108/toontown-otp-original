@@ -33,6 +33,9 @@ class Participant(io.NetworkHandler):
                 self.network.interface.remove_channel(self)
             elif message_type == types.CONTROL_ADD_POST_REMOVE:
                 if not di.get_remaining_size():
+                    self.notify.warning('Cannot add post remove for channel: %d, '
+                        'no data is remaining in the buffer!' % sender)
+
                     return
 
                 self.network.interface.add_post_remove(sender, io.NetworkDatagram(
@@ -76,7 +79,7 @@ class ParticipantInterface(object):
         if self.has_channel(channel):
             return
 
-        self.notify.debug('Registered new channel: %d connection: %r' % (
+        self.notify.debug('Registered new channel: %d connection: %r.' % (
             channel, participant.connection))
 
         participant.channel = channel
@@ -86,7 +89,7 @@ class ParticipantInterface(object):
         if not self.has_channel(participant.channel):
             return
 
-        self.notify.debug('Unregistered existing channel: %d connection: %r' % (
+        self.notify.debug('Unregistered existing channel: %d connection: %r.' % (
             participant.channel, participant.connection))
 
         del self._participants[participant.channel]
