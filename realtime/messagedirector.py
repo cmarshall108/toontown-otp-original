@@ -166,7 +166,7 @@ class Message(object):
     def setup(self):
         pass
 
-    def shutdown(self):
+    def destroy(self):
         self._timestamp = None
         self._channel = None
         self._sender = None
@@ -217,7 +217,7 @@ class MessageInterface(object):
             return
 
         self._messages.remove(message)
-        message.shutdown()
+        message.destroy()
 
     def setup(self):
         self.__send_task = task_mgr.add(self.__send_messages, self._network.get_unique_name(
