@@ -102,16 +102,13 @@ class StateObject(object):
     def old_owner_id(self):
         return self._old_owner_id
 
-    @old_owner_id.setter
-    def old_owner_id(self, old_owner_id):
-        self._old_owner_id = old_owner_id
-
     @property
     def owner_id(self):
         return self._owner_id
 
     @owner_id.setter
     def owner_id(self, owner_id):
+        self._old_owner_id = self._owner_id
         self._owner_id = owner_id
 
     @property
@@ -124,6 +121,7 @@ class StateObject(object):
 
     @parent_id.setter
     def parent_id(self, parent_id):
+        self._old_parent_id = self._parent_id
         self._parent_id = parent_id
 
     @property
@@ -136,6 +134,7 @@ class StateObject(object):
 
     @zone_id.setter
     def zone_id(self, zone_id):
+        self._old_zone_id = self._zone_id
         self._zone_id = zone_id
 
     @property
@@ -174,29 +173,28 @@ class StateObject(object):
             self.handle_set_owner(sender, di)
         elif message_type == types.STATESERVER_OBJECT_SET_ZONE:
             self.handle_set_zone(sender, di)
+        else:
+            self.notify.warning('Received unknown message type %d for state object %d!' % (
+                message_type, self._do_id))
 
     def handle_set_owner(self, sender, di):
-        owner_id = di.get_uint64()
-
-        self._old_owner_id = self._owner_id
-        self._owner_id = owner_id
+        # update the object's new owner id so that owner
+        # can now send field updates for this object...
+        self.owner_id = di.get_uint64()
 
     def handle_set_zone(self, sender, di):
-        zone_id = di.get_uint32()
-
-        self._old_parent_id = self._parent_id
-        self._old_zone_id = self._zone_id
-
-        self._zone_id = zone_id
+        # update the object's new zone so that the object
+        # will be located within that new interests...
+        self.zone_id = di.get_uint32()
 
         # delete any existing objects within our new interest set,
         # exclude our own object since thats a local object...
-        self.handle_delete_objects(excludes=[self.do_id])
-        self.handle_send_delete_broadcast(excludes=[self.do_id])
+        self.handle_delete_objects(excludes=[self._do_id])
+        self.handle_send_delete_broadcast(excludes=[self._do_id])
 
         # send generates for the quite zone objects before we change the avatar's
         # zone so that they always have interest in those objects...
-        self.handle_send_generates(quietZone=True, excludes=[self.do_id])
+        self.handle_send_generates(quietZone=True, excludes=[self._do_id])
 
         # if we have an owner, tell them that we've sent all of the initial zone
         # objects in the new interest set...
@@ -204,8 +202,8 @@ class StateObject(object):
 
         # generate any new objects within our new interest set,
         # exclude our own object since thats a local object...
-        self.handle_send_generates(excludes=[self.do_id])
-        self.handle_send_generate_broadcast(excludes=[self.do_id])
+        self.handle_send_generates(excludes=[self._do_id])
+        self.handle_send_generate_broadcast(excludes=[self._do_id])
 
     def handle_update_field(self, sender, channel, di):
         field_id = di.get_uint16()
@@ -254,7 +252,7 @@ class StateObject(object):
             if not field.is_broadcast():
                 self.handle_send_update(field, self._parent_id, channel, di)
             else:
-                self.handle_send_update_broadcast(field, self._parent_id, di, excludes=[self.do_id])
+                self.handle_send_update_broadcast(field, self._parent_id, di, excludes=[self._do_id])
 
     def handle_send_changing_location(self, channel):
         datagram = io.NetworkDatagram()
@@ -323,10 +321,10 @@ class StateObject(object):
             datagram.add_header(channel, self._network.channel,
                 types.STATESERVER_OBJECT_ENTER_LOCATION_WITH_REQUIRED_OTHER)
 
-        datagram.add_uint64(self.do_id)
-        datagram.add_uint64(self.parent_id)
-        datagram.add_uint32(self.zone_id)
-        datagram.add_uint16(self.dc_class.get_number())
+        datagram.add_uint64(self._do_id)
+        datagram.add_uint64(self._parent_id)
+        datagram.add_uint32(self._zone_id)
+        datagram.add_uint16(self._dc_class.get_number())
 
         self.append_required_data(datagram)
         self._network.handle_send_connection_datagram(datagram)
@@ -361,7 +359,7 @@ class StateObject(object):
         datagram.add_header(channel, self._network.channel,
             types.STATESERVER_OBJECT_DELETE_RAM)
 
-        datagram.add_uint64(self.do_id)
+        datagram.add_uint64(self._do_id)
         self._network.handle_send_connection_datagram(datagram)
 
     def handle_send_delete_broadcast(self, excludes=[]):
@@ -389,7 +387,7 @@ class StateObject(object):
             if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
                 state_object.handle_send_delete(self._owner_id)
 
-    def shutdown(self):
+    def destroy(self):
         self.handle_send_delete_broadcast()
 
 class StateObjectManager(object):
@@ -416,7 +414,7 @@ class StateObjectManager(object):
         if not self.has_state_object(state_object.do_id):
             return
 
-        state_object.shutdown()
+        state_object.destroy()
         del self._state_objects[state_object.do_id]
 
     def get_state_object(self, do_id):
