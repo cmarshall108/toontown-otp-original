@@ -368,7 +368,7 @@ class StateObject(object):
             if state_object.do_id in excludes:
                 continue
 
-            if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
+            if state_object.parent_id == self._old_parent_id or state_object.zone_id == self._old_zone_id:
 
                 if not state_object.owner_id:
                     continue
@@ -384,7 +384,7 @@ class StateObject(object):
             if state_object.zone_id == OTP_ZONE_ID_OLD_QUIET_ZONE:
                 continue
 
-            if state_object.parent_id == self._old_parent_id and state_object.zone_id == self._old_zone_id:
+            if state_object.parent_id == self._old_parent_id or state_object.zone_id == self._old_zone_id:
                 state_object.handle_send_delete(self._owner_id)
 
     def destroy(self):
