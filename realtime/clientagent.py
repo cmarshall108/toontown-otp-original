@@ -583,7 +583,7 @@ class ClientAccountManager(ClientOperationManager):
 
         operation.request('Query')
 
-    def handle_get_avatar_details(self, client, callback):
+    def handle_retrieve_avatar_details(self, client, callback):
         avatar_id = client.get_avatar_id_from_connection_channel(client.channel)
         operation = self.run_operation(GetAvatarDetailsFSM, client,
             callback, avatar_id)
@@ -838,8 +838,8 @@ class Client(io.NetworkHandler):
 
             return
 
-        #self.network.account_manager.handle_get_avatar_details(self,
-        #    self.handle_avatar_details_resp)
+        self.network.account_manager.handle_retrieve_avatar_details(self,
+            self.handle_avatar_details_resp)
 
     def handle_avatar_details_resp(self, di):
         datagram = io.NetworkDatagram()
