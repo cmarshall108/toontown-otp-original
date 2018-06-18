@@ -213,7 +213,7 @@ class StateObject(object):
         # moving to an new AI...
         if self._old_parent_id:
             datagram = io.NetworkDatagram()
-            datagram.add_header(self._do_id, self._network.channel,
+            datagram.add_header(self._old_parent_id, self._do_id,
                 types.STATESERVER_OBJECT_CHANGING_AI)
 
             datagram.add_uint64(self._do_id)
