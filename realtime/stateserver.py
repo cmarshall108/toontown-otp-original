@@ -568,6 +568,8 @@ class StateServer(io.NetworkConnector):
             self.handle_object_update_field(sender, channel, di)
         elif message_type == types.STATESERVER_SET_AVATAR:
             self.handle_set_avatar(sender, di)
+        elif message_type == types.STATESERVER_OBJECT_DELETE_RAM:
+            self.handle_delete_object(sender, di)
         else:
             state_object = self._object_manager.get_state_object(channel)
 
@@ -685,3 +687,15 @@ class StateServer(io.NetworkConnector):
         avatar_object.append_required_data(datagram)
         avatar_object.append_other_data(datagram)
         self.handle_send_connection_datagram(datagram)
+
+    def handle_delete_object(self, sender, di):
+        do_id = di.get_uint64()
+        state_object = self._object_manager.get_state_object(do_id)
+
+        if not state_object:
+            self.notify.warning('Failed to delete object: %d, object does not exist!' % (
+                do_id))
+
+            return do_id
+
+        self._object_manager.remove_state_object(state_object)

@@ -665,7 +665,10 @@ class NetworkHandler(NetworkManager):
         self._network.handle_send_connection_datagram(datagram)
 
     def handle_set_channel_id(self, channel):
-        if channel != self._channel:
+        # only allow them to unregister another channel they set before,
+        # do not allow the allocated channel to be unregistered because we
+        # use that channel to determine when the client disconnects...
+        if channel != self._channel and self._channel != self._allocated_channel:
             self.unregister_for_channel(self._channel)
 
         self._channel = channel
@@ -722,6 +725,9 @@ class NetworkHandler(NetworkManager):
         self._network.handle_disconnected(self)
 
     def shutdown(self):
+        if self._allocated_channel and self._channel != self._allocated_channel:
+            self.unregister_for_channel(self._allocated_channel)
+
         if self._channel:
             self.unregister_for_channel(self._channel)
 
@@ -869,16 +875,6 @@ class NetworkListener(NetworkManager):
         for connection, handler in self.__handlers.items():
 
             if handler.channel == channel:
-                return handler
-
-            if self.get_account_connection_channel(self.get_account_id_from_channel_code(
-                self.channel)) == channel:
-
-                return handler
-
-            if self.get_puppet_connection_channel(self.get_avatar_id_from_connection_channel(
-                self.channel)) == channel:
-
                 return handler
 
         return None

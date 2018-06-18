@@ -190,18 +190,6 @@ class DistributedToonAI(DistributedSmoothNodeAI):
     def getHoodsVisited(self):
         return self.hoodsVisited
 
-    def setLocation(self, parentId, zoneId):
-        DistributedSmoothNodeAI.setLocation(self, parentId, zoneId)
-
-        hood = zoneId - zoneId % 1000
-        self.b_setLastHood(hood)
-        self.b_setDefaultZone(hood)
-
-        hoodsVisited = list(self.getHoodsVisited())
-        if hood not in hoodsVisited:
-            hoodsVisited.append(hood)
-            self.b_setHoodsVisited(hoodsVisited)
-
     def setInterface(self, interface):
         self.interface = interface
 

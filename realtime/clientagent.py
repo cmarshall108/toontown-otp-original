@@ -439,6 +439,21 @@ class LoadAvatarFSM(ClientOperation):
         datagram.add_uint64(channel)
         self.manager.network.handle_send_connection_datagram(datagram)
 
+        # setup a post remove message that will delete the
+        # client's toon object when they disconnect...
+        post_remove = io.NetworkDatagram()
+        post_remove.add_header(self._avatar_id, channel,
+            types.STATESERVER_OBJECT_DELETE_RAM)
+
+        post_remove.add_uint64(self._avatar_id)
+
+        datagram = io.NetworkDatagram()
+        datagram.add_control_header(self.client.allocated_channel,
+            types.CONTROL_ADD_POST_REMOVE)
+
+        datagram.append_data(post_remove.get_message())
+        self.manager.network.handle_send_connection_datagram(datagram)
+
         # we're all done.
         self.ignoreAll()
         self.manager.stop_operation(self.client)
@@ -1027,7 +1042,7 @@ class Client(io.NetworkHandler):
             self.network.account_manager.stop_operation(self)
 
         if self.allocated_channel:
-            self.network.channel_allocator.free(self.allocated_channel)
+            self.network.channel_allocator.free(self._allocated_channel)
 
         io.NetworkHandler.shutdown(self)
 

@@ -28,10 +28,22 @@ class Participant(io.NetworkHandler):
             sender = di.get_uint64()
 
             if message_type == types.CONTROL_SET_CHANNEL:
+                # only set this participants channel once this is due,
+                # because the client agent registers it's own connections...
+                if not self.channel:
+                    self.channel = sender
+
                 self.network.interface.add_channel(self, sender)
             elif message_type == types.CONTROL_REMOVE_CHANNEL:
-                self.network.interface.remove_channel(self)
+                self.network.interface.remove_channel(sender)
+
+                # attempt to handle any pending post removes for the channel
+                # that we are removing here, this is because the client agent
+                # will send this message when a client disconnects...
+                self.handle_post_removes(sender)
             elif message_type == types.CONTROL_ADD_POST_REMOVE:
+                # check to see if the post remove message actually
+                # has post remove data...
                 if not di.get_remaining_size():
                     self.notify.warning('Cannot add post remove for channel: %d, '
                         'no data is remaining in the buffer!' % sender)
@@ -41,24 +53,25 @@ class Participant(io.NetworkHandler):
                 self.network.interface.add_post_remove(sender, io.NetworkDatagram(
                     Datagram(di.get_remaining_bytes())))
             elif message_type == types.CONTROL_CLEAR_POST_REMOVE:
-                self.network.interface.remove_post_remove(self)
+                self.network.interface.remove_post_remove(sender)
         else:
             self.network.message_interface.add_message(channel,
                 di.get_uint64(), di)
 
-    def handle_post_removes(self):
-        for datagram in self.network.interface.get_post_removes(self):
+    def handle_post_removes(self, channel):
+        for datagram in self.network.interface.get_post_removes(channel):
             self.handle_datagram(io.NetworkDatagramIterator(datagram))
 
-        self.network.interface.remove_post_remove(self)
+        self.network.interface.remove_post_remove(channel)
 
     def handle_disconnected(self):
-        self.handle_post_removes()
+        self.handle_post_removes(self.channel)
         self.network.interface.remove_channel(self)
         io.NetworkHandler.handle_disconnected(self)
 
 class ParticipantInterface(object):
     notify = directNotify.newCategory('ParticipantInterface')
+    notify.setDebug(True)
 
     def __init__(self):
         self._participants = {}
@@ -77,23 +90,29 @@ class ParticipantInterface(object):
 
     def add_channel(self, participant, channel):
         if self.has_channel(channel):
+            self.notify.warning('Cannot add channel: %d, already exists!' % (
+                channel))
+
             return
 
-        self.notify.debug('Registered new channel: %d connection: %r.' % (
-            channel, participant.connection))
+        self.notify.debug('Registered new channel: %d.' % (
+            channel))
 
-        participant.channel = channel
-        self._participants[participant.channel] = participant
+        self._participants[channel] = participant
 
-    def remove_channel(self, participant):
-        if not self.has_channel(participant.channel):
+    def remove_channel(self, channel):
+        participant = self.get_participant(channel)
+
+        if not participant:
+            self.notify.warning('Cannot remove channel: %d, does not exist!' % (
+                channel))
+
             return
 
-        self.notify.debug('Unregistered existing channel: %d connection: %r.' % (
-            participant.channel, participant.connection))
+        self.notify.debug('Unregistered an existing channel: %d.' % (
+            participant.channel))
 
-        del self._participants[participant.channel]
-        participant.channel = None
+        del self._participants[channel]
 
     def get_participant(self, channel):
         return self._participants.get(channel)
@@ -102,20 +121,23 @@ class ParticipantInterface(object):
         return channel in self._post_removes
 
     def add_post_remove(self, channel, datagram):
+        self.notify.debug('Adding post remove data for channel: %d.' % (
+            channel))
+
         post_removes = self._post_removes.setdefault(channel, [])
         post_removes.append(datagram)
 
-    def remove_post_remove(self, participant):
-        if not self.has_post_remove(participant.channel):
+    def remove_post_remove(self, channel):
+        if not self.has_post_remove(channel):
             return
 
-        del self._post_removes[participant.channel]
+        del self._post_removes[channel]
 
-    def get_post_removes(self, participant):
-        if not self.has_post_remove(participant.channel):
+    def get_post_removes(self, channel):
+        if not self.has_post_remove(channel):
             return []
 
-        return self._post_removes.pop(participant.channel)
+        return self._post_removes.pop(channel)
 
 class Message(object):
 
