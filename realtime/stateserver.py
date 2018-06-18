@@ -335,7 +335,7 @@ class StateObject(object):
 
         # check to see if the field is a required or other field,
         # and store the new arguments appropriately.
-        if field.as_molecular_field() and field.is_required():
+        if field.is_required():
             self._required_fields[field.get_number()] = field_args
         elif field.is_ram():
             self._other_fields[field.get_number()] = field_args
