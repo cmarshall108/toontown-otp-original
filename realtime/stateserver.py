@@ -221,7 +221,7 @@ class StateObject(object):
 
         # tell the new AI that the object has arrived,
         # this will generate the object on the new AI...
-        self.handle_send_generate(new_parent_id)
+        self.handle_send_ai_generate()
 
         # the sender of this message was a client agent handler,
         # a client requested it's object move AI's...
@@ -362,6 +362,24 @@ class StateObject(object):
 
         if not self._owner_id:
             self.handle_send_update(field, sender, self._parent_id, di)
+
+    def handle_send_ai_generate(self):
+        datagram = io.NetworkDatagram()
+
+        if not self._has_other:
+            datagram.add_header(self._parent_id, self._network.channel,
+                types.STATESERVER_OBJECT_ENTER_AI_WITH_REQUIRED)
+        else:
+            datagram.add_header(self._parent_id, self._network.channel,
+                types.STATESERVER_OBJECT_ENTER_AI_WITH_REQUIRED_OTHER)
+
+        datagram.add_uint32(self._do_id)
+        datagram.add_uint32(self._parent_id)
+        datagram.add_uint32(self._zone_id)
+        datagram.add_uint16(self._dc_class.get_number())
+
+        self.append_required_data(datagram)
+        self._network.handle_send_connection_datagram(datagram)
 
     def handle_send_generate(self, channel):
         datagram = io.NetworkDatagram()
@@ -600,7 +618,7 @@ class StateServer(io.NetworkConnector):
         # generate the object as we would any other object,
         # except that the avatar has other fields...
         di = io.NetworkDatagramIterator(datagram)
-        self.handle_generate(sender, True, di)
+        self.handle_generate(sender, False, di)
 
         # now since the avatar's owned object has been generated
         # let's tell them that and send them the fields packed by the
