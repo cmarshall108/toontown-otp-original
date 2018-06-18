@@ -238,8 +238,6 @@ class OTPInternalRepository(ConnectionRepository):
         #    self.handleGetObjectResp(di)
         #elif msgType == CLIENTAGENT_GET_NETWORK_ADDRESS_RESP:
         #    self.handleGetNetworkAddressResp(di)
-        elif msgType == STATESERVER_SET_AVATAR_RESP:
-            self.handleSetAvatarResp(di)
         #elif msgType >= 20000:
         #    # These messages belong to the NetMessenger:
         #    self.netMessenger.handle(msgType, di)
@@ -452,47 +450,6 @@ class OTPInternalRepository(ConnectionRepository):
             self.__callbacks[ctx](remoteIp, remotePort, localIp, localPort)
         finally:
             del self.__callbacks[ctx]
-
-    def handleSetAvatarResp(self, di):
-        clientId = self.getMsgSender()
-        doId = di.getUint32()
-        parentId = di.getUint32()
-        zoneId = di.getUint32()
-
-        if doId in self.doId2do:
-            return # We already know about this object; ignore the entry.
-
-        dclass = self.dclassesByName['DistributedToonAI']
-
-        do = dclass.getClassDef()(self)
-        do.dclass = dclass
-        do.doId = doId
-        # The DO came in off the server, so we do not unregister the channel when
-        # it dies:
-        do.doNotDeallocateChannel = True
-        self.addDOToTables(do, location=(parentId, zoneId))
-
-        # Now for generation:
-        do.generate()
-        do.updateAllRequiredFields(dclass, di)
-
-        # pack all of the avatar's required fields and send them
-        # to the client channel as the avatar details response...
-        dg = PyDatagram()
-
-        for index in xrange(dclass.getNumInheritedFields()):
-            field = dclass.getInheritedField(index)
-
-            if not field.asAtomicField() or not field.isRequired():
-                continue
-
-            dclass.packRequiredField(dg, do, field)
-
-        dg2 = PyDatagram()
-        dg2.addServerHeader(clientId, self.ourChannel, CLIENT_GET_AVATAR_DETAILS_RESP)
-        dg2.addUint32(do.doId)
-        dg2.appendData(dg.get_message())
-        self.send(dg2)
 
     def sendUpdate(self, do, fieldName, args):
         """

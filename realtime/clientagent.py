@@ -397,6 +397,9 @@ class LoadAvatarFSM(ClientOperation):
             types.STATESERVER_SET_AVATAR)
 
         datagram.add_uint32(self._avatar_id)
+        datagram.add_uint32(0)
+        datagram.add_uint32(0)
+        datagram.add_uint16(self._dc_class.get_number())
 
         sorted_fields = {}
         for field_name, field_args in self._fields.items():
@@ -418,10 +421,8 @@ class LoadAvatarFSM(ClientOperation):
             field = self._dc_class.get_field_by_index(field_index)
 
             if not field:
-                self.notify.warning('Failed to pack fields for object %d, unknown field: %d!' % (
-                    self._avatar_id, field_index))
-
-                return
+                self.notify.error('Failed to pack required field: %d for object %d, unknown field!' % (
+                    field_index, self._avatar_id))
 
             field_packer.begin_pack(field)
             field.pack_args(field_packer, field_args)
@@ -693,7 +694,9 @@ class Client(io.NetworkHandler):
     def handle_internal_datagram(self, message_type, sender, di):
         if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
             self.handle_get_shard_list_resp(di)
-        elif message_type == types.CLIENT_GET_AVATAR_DETAILS_RESP:
+        elif message_type == types.STATESERVER_OBJECT_SET_AI_RESP:
+            self.handle_object_set_ai_resp(di)
+        elif message_type == types.STATESERVER_SET_AVATAR_RESP:
             self.handle_avatar_details_resp(di)
         elif message_type == types.STATESERVER_OBJECT_SET_ZONE_RESP:
             self.handle_set_zone_resp(di)
@@ -903,6 +906,16 @@ class Client(io.NetworkHandler):
 
             return
 
+        avatar_id = self.get_avatar_id_from_connection_channel(self.channel)
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(avatar_id, self.channel,
+            types.STATESERVER_OBJECT_SET_AI)
+
+        datagram.add_uint64(shard_id)
+        self.network.handle_send_connection_datagram(datagram)
+
+    def handle_object_set_ai_resp(self, di):
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GET_STATE_RESP)
         self.handle_send_datagram(datagram)

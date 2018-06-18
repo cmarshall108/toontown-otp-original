@@ -80,7 +80,7 @@ class StateObject(object):
             field = self._dc_class.get_inherited_field(field_index)
 
             if not field:
-                self.notify.error('Failed to unpack field: %d dclass: %s, unknown field!' % (
+                self.notify.error('Failed to unpack required field: %d dclass: %s, unknown field!' % (
                     field_index, self._dc_class.get_name()))
 
             if field.as_molecular_field() or not field.is_required():
@@ -151,16 +151,26 @@ class StateObject(object):
             field = self._dc_class.get_field_by_index(index)
 
             if not field:
-                self.notify.error('Failed to append required data for field: %s dclass: %s, unknown field' % (
+                self.notify.error('Failed to append required data for field: %s dclass: %s, unknown field!' % (
                     field_name, self._dc_class.get_name()))
 
             field_packer.begin_pack(field)
+            field.pack_args(field_packer, self._required_fields[field.get_number()])
+            field_packer.end_pack()
 
-            if not self._has_other:
-                field.pack_args(field_packer, self._required_fields[field.get_number()])
-            else:
-                field.pack_args(field_packer, self._other_fields[field.get_number()])
+        datagram.append_data(field_packer.get_string())
 
+    def append_other_data(self, datagram):
+        field_packer = DCPacker()
+        for index in self._other_fields:
+            field = self._dc_class.get_field_by_index(index)
+
+            if not field:
+                self.notify.error('Failed to append other data for field: %s dclass: %s, unknown field!' % (
+                    field_name, self._dc_class.get_name()))
+
+            field_packer.begin_pack(field)
+            field.pack_args(field_packer, self._other_fields[field.get_number()])
             field_packer.end_pack()
 
         datagram.append_data(field_packer.get_string())
@@ -171,6 +181,8 @@ class StateObject(object):
     def handle_internal_datagram(self, sender, message_type, di):
         if message_type == types.STATESERVER_OBJECT_SET_OWNER:
             self.handle_set_owner(sender, di)
+        elif message_type == types.STATESERVER_OBJECT_SET_AI:
+            self.handle_set_ai(sender, di)
         elif message_type == types.STATESERVER_OBJECT_SET_ZONE:
             self.handle_set_zone(sender, di)
         else:
@@ -181,6 +193,46 @@ class StateObject(object):
         # update the object's new owner id so that owner
         # can now send field updates for this object...
         self.owner_id = di.get_uint64()
+
+    def handle_set_ai(self, sender, di):
+        new_parent_id = di.get_uint64()
+
+        # check to see if the request provides a new AI channel
+        # in which the object can live under...
+        if new_parent_id == self._parent_id:
+            self.notify.warning('Failed to change to parent: %d for object: %d, object did not change parent\'s!' % (
+                new_parent_id, self._do_id))
+
+            return
+
+        # update the object's new parent so that we know
+        # which AI the object lives under...
+        self.parent_id = new_parent_id
+
+        # tell the object's old AI that they have left and are
+        # moving to an new AI...
+        if self._old_parent_id:
+            datagram = io.NetworkDatagram()
+            datagram.add_header(self._do_id, self._network.channel,
+                types.STATESERVER_OBJECT_CHANGING_AI)
+
+            datagram.add_uint64(self._do_id)
+            self._network.handle_send_connection_datagram(datagram)
+
+        # tell the new AI that the object has arrived,
+        # this will generate the object on the new AI...
+        self.handle_send_generate(new_parent_id)
+
+        # the sender of this message was a client agent handler,
+        # a client requested it's object move AI's...
+        # so let's send a response to say that the object has
+        # successfully moved AI's
+        if not self._network.shard_manager.has_shard(sender):
+            datagram = io.NetworkDatagram()
+            datagram.add_header(sender, self._do_id,
+                types.STATESERVER_OBJECT_SET_AI_RESP)
+
+            self._network.handle_send_connection_datagram(datagram)
 
     def handle_set_zone(self, sender, di):
         # update the object's new zone so that the object
@@ -539,31 +591,35 @@ class StateServer(io.NetworkConnector):
         state_object.handle_update_field(sender, channel, di)
 
     def handle_set_avatar(self, sender, di):
-        # ensure the sender of this message was not a shard channel,
-        # only client agent's should send this message...
-        if self._shard_manager.has_shard(sender):
-            return
-
-        # we are generating a new avatar, this is a "special" method in which will
-        # create a distributed object and respond to the client with the default
-        # fields specified by the toon's dclass fields...
-        do_id = di.get_uint32()
-        parent_id = random.choice(self._shard_manager.shards.keys())
-        zone_id = 0
-        dc_class = self.dc_loader.dclasses_by_name['DistributedToon']
-
-        avatar_object = StateObject(self, do_id, parent_id, zone_id, dc_class, False, di)
-        self._object_manager.add_state_object(avatar_object)
-
-        # tell the AI which has been chosen to generate the avatar on,
-        # that the avatar has been created and the client is awaiting it's response...
+        # store the avatar field update data in a new datagram buffer
+        # so that we can send this data back to the client as the
+        # CLIENT_GET_AVATAR_DETAILS response message...
         datagram = io.NetworkDatagram()
-        datagram.add_header(parent_id, sender,
+        datagram.append_data(di.get_remaining_bytes())
+
+        # generate the object as we would any other object,
+        # except that the avatar has other fields...
+        di = io.NetworkDatagramIterator(datagram)
+        self.handle_generate(sender, True, di)
+
+        # now since the avatar's owned object has been generated
+        # let's tell them that and send them the fields packed by the
+        # client agent ordered by inheritance id...
+        di = io.NetworkDatagramIterator(datagram)
+        avatar_id = di.get_uint32()
+        parent_id = di.get_uint32()
+        zone_id = di.get_uint32()
+        dc_id = di.get_uint16()
+
+        # TODO FIXME: why the fuck can i not append the data
+        # directly to the datagram buffer object from the iterator??????
+        remaining_data = di.get_remaining_bytes()
+        avatar_object = self._object_manager.get_state_object(avatar_id)
+
+        datagram = io.NetworkDatagram()
+        datagram.add_header(sender, self.channel,
             types.STATESERVER_SET_AVATAR_RESP)
 
-        datagram.add_uint32(do_id)
-        datagram.add_uint32(parent_id)
-        datagram.add_uint32(zone_id)
-
-        avatar_object.append_required_data(datagram)
+        datagram.add_uint32(avatar_id)
+        datagram.append_data(remaining_data)
         self.handle_send_connection_datagram(datagram)
