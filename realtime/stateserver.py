@@ -267,6 +267,17 @@ class StateObject(object):
 
             return
 
+        # copy the field update so we can unpack it and
+        # update any required fields here on the state server.
+        # we must do this after we allow the field to be updated
+        # because the checks to ensure the field is valid must be ran first...
+        datagram = io.NetworkDatagram()
+        datagram.append_data(di.get_remaining_bytes())
+
+        # create a new datagram iterator object that the field
+        # response update can unpack from...
+        di = io.NetworkDatagramIterator(datagram)
+
         # ensure this field is not a bogus field...
         if field.is_bogus_field():
             self.notify.debug('Cannot handle field update for field: %s dclass: %s, field is bogus!' % (
@@ -305,6 +316,29 @@ class StateObject(object):
                 self.handle_send_update(field, self._parent_id, channel, di)
             else:
                 self.handle_send_update_broadcast(field, self._parent_id, di, excludes=[self._do_id])
+
+        # unpack the field arguments so that we can update our
+        # view of the object's required or other fields dictionaries...
+        di = io.NetworkDatagramIterator(datagram)
+
+        # if the iterator is empty, this means that the field
+        # has no arguents and that we should not attempt to update it...
+        if not di.get_remaining_size():
+            return
+
+        field_packer = DCPacker()
+        field_packer.set_unpack_data(di.get_remaining_bytes())
+
+        field_packer.begin_unpack(field)
+        field_args = field.unpack_args(field_packer)
+        field_packer.end_unpack()
+
+        # check to see if the field is a required or other field,
+        # and store the new arguments appropriately.
+        if field.as_molecular_field() and field.is_required():
+            self._required_fields[field.get_number()] = field_args
+        elif field.is_ram():
+            self._other_fields[field.get_number()] = field_args
 
     def handle_send_changing_location(self, channel):
         datagram = io.NetworkDatagram()
@@ -639,5 +673,6 @@ class StateServer(io.NetworkConnector):
             types.STATESERVER_SET_AVATAR_RESP)
 
         datagram.add_uint32(avatar_id)
-        datagram.append_data(remaining_data)
+        avatar_object.append_required_data(datagram)
+        avatar_object.append_other_data(datagram)
         self.handle_send_connection_datagram(datagram)
