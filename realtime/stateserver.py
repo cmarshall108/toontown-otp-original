@@ -308,7 +308,7 @@ class StateObject(object):
 
     def handle_send_changing_location(self, channel):
         datagram = io.NetworkDatagram()
-        datagram.add_header(channel, self._network.channel,
+        datagram.add_header(channel, self._do_id,
             types.STATESERVER_OBJECT_CHANGING_LOCATION)
 
         datagram.add_uint32(self._do_id)
@@ -318,7 +318,7 @@ class StateObject(object):
 
     def handle_send_set_zone(self, channel, zone_id, old_zone_id):
         datagram = io.NetworkDatagram()
-        datagram.add_header(channel, self._network.channel,
+        datagram.add_header(channel, self._do_id,
             types.STATESERVER_OBJECT_SET_ZONE_RESP)
 
         datagram.add_uint32(old_zone_id)

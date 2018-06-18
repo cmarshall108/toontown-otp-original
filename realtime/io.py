@@ -719,12 +719,12 @@ class NetworkHandler(NetworkManager):
         Handles disconnection when the socket connection closes
         """
 
-        if self._channel:
-            self.unregister_for_channel(self._channel)
-
         self._network.handle_disconnected(self)
 
     def shutdown(self):
+        if self._channel:
+            self.unregister_for_channel(self._channel)
+
         if self.__update_task:
             task_mgr.remove(self.__update_task)
 
