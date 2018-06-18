@@ -50,10 +50,10 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 
     def setName(self, name):
         self.name = name
-        
+
     def d_setName(self, name):
         self.sendUpdate('setName', [name])
-    
+
     def b_setName(self, name):
         self.setName(name)
         self.d_setName(name)
@@ -87,10 +87,10 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 
     def setMoney(self, money):
         self.money = money
-        
+
     def d_setMoney(self, money):
         self.sendUpdate("setMoney", money)
-        
+
     def b_setMoney(self, money):
         self.setMoney(money)
         self.d_setMoney(money)
@@ -154,10 +154,10 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 
     def setDefaultZone(self, defaultZone):
         self.defaultZone = defaultZone
-        
+
     def d_setDefaultZone(self, defaultZone):
         self.sendUpdate("setDefaultZone", [defaultZone])
-        
+
     def b_setDefaultZone(self, defaultZone):
         self.setDefaultZone(defaultZone)
         self.d_setDefaultZone(defaultZone)
@@ -179,19 +179,19 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 
     def setHoodsVisited(self, hoodsVisited):
         self.hoodsVisited = hoodsVisited
-        
+
     def d_setHoodsVisited(self, hoodsVisited):
         self.sendUpdate("setHoodsVisited", [hoodsVisited])
-        
+
     def b_setHoodsVisited(self, hoodsVisited):
         self.setHoodsVisited(hoodsVisited)
         self.d_setHoodsVisited(hoodsVisited)
 
     def getHoodsVisited(self):
         return self.hoodsVisited
-        
+
     def setLocation(self, parentId, zoneId):
-        DistributedSmoothNodeAI.DistributedSmoothNodeAI.setLocation(self, parentId, zoneId)
+        DistributedSmoothNodeAI.setLocation(self, parentId, zoneId)
 
         hood = zoneId - zoneId % 1000
         self.b_setLastHood(hood)
@@ -216,10 +216,10 @@ class DistributedToonAI(DistributedSmoothNodeAI):
 
     def setLastHood(self, lastHood):
         self.lastHood = lastHood
-        
-    def d_aetLastHood(self, lastHood):
+
+    def d_setLastHood(self, lastHood):
         self.sendUpdate("setLastHood", [lastHood])
-        
+
     def b_setLastHood(self, lastHood):
         self.setLastHood(lastHood)
         self.d_setLastHood(lastHood)
