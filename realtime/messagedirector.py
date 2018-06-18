@@ -71,7 +71,6 @@ class Participant(io.NetworkHandler):
 
 class ParticipantInterface(object):
     notify = directNotify.newCategory('ParticipantInterface')
-    notify.setDebug(True)
 
     def __init__(self):
         self._participants = {}
