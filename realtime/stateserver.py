@@ -663,9 +663,6 @@ class StateServer(io.NetworkConnector):
         zone_id = di.get_uint32()
         dc_id = di.get_uint16()
 
-        # TODO FIXME: why the fuck can i not append the data
-        # directly to the datagram buffer object from the iterator??????
-        remaining_data = di.get_remaining_bytes()
         avatar_object = self._object_manager.get_state_object(avatar_id)
 
         datagram = io.NetworkDatagram()
