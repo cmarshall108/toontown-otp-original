@@ -412,7 +412,11 @@ class StateObject(object):
         datagram.add_uint32(self._zone_id)
         datagram.add_uint16(self._dc_class.get_number())
 
-        self.append_required_data(datagram)
+        if not self._has_other:
+            self.append_required_data(datagram)
+        else:
+            self.append_other_data(datagram)
+
         self._network.handle_send_connection_datagram(datagram)
 
     def handle_send_generate(self, channel):
@@ -430,7 +434,11 @@ class StateObject(object):
         datagram.add_uint32(self._zone_id)
         datagram.add_uint16(self._dc_class.get_number())
 
-        self.append_required_data(datagram)
+        if not self._has_other:
+            self.append_required_data(datagram)
+        else:
+            self.append_other_data(datagram)
+
         self._network.handle_send_connection_datagram(datagram)
 
     def handle_send_generate_broadcast(self, excludes=[]):
