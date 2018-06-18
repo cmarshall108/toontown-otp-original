@@ -52,29 +52,29 @@ def main():
     client_agent_address = config.GetString('clientagent-address', '0.0.0.0')
     client_agent_port = config.GetInt('clientagent-port', 6667)
     client_agent_connect_address = config.GetString('database-connect-address', '127.0.0.1')
-    client_agent_connet_port = config.GetInt('database-connect-port', message_director_port)
+    client_agent_connect_port = config.GetInt('database-connect-port', message_director_port)
     client_agent_channel = config.GetInt('clientagent-channel', types.CLIENTAGENT_CHANNEL)
 
     state_server_connect_address = config.GetString('stateserver-connect-address', '127.0.0.1')
-    state_server_connet_port = config.GetInt('stateserver-connect-port', message_director_port)
+    state_server_connect_port = config.GetInt('stateserver-connect-port', message_director_port)
     state_server_channel = config.GetInt('stateserver-channel', types.STATESERVER_CHANNEL)
 
     database_connect_address = config.GetString('database-connect-address', '127.0.0.1')
-    database_connet_port = config.GetInt('database-connect-port', message_director_port)
+    database_connect_port = config.GetInt('database-connect-port', message_director_port)
     database_channel = config.GetInt('database-channel', types.DATABASE_CHANNEL)
 
     message_director = setup_component(messagedirector.MessageDirector, message_director_address,
         message_director_port)
 
     client_agent = setup_component(clientagent.ClientAgent, dc_loader, client_agent_address,
-        client_agent_port, client_agent_connect_address, client_agent_connet_port,
+        client_agent_port, client_agent_connect_address, client_agent_connect_port,
         client_agent_channel)
 
     state_server = setup_component(stateserver.StateServer, dc_loader, state_server_connect_address,
-        state_server_connet_port, state_server_channel)
+        state_server_connect_port, state_server_channel)
 
     database_server = setup_component(database.DatabaseServer, dc_loader, database_connect_address,
-        database_connet_port, database_channel)
+        database_connect_port, database_channel)
 
 if __name__ == '__main__':
     main()
