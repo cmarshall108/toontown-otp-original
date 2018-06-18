@@ -248,6 +248,10 @@ class StateObject(object):
         # zone so that they always have interest in those objects...
         self.handle_send_generates(quietZone=True, excludes=[self._do_id])
 
+        # tell our current AI channel that we're changing location
+        # and that they need to update their instance of the object...
+        self.handle_send_changing_location()
+
         # if we have an owner, tell them that we've sent all of the initial zone
         # objects in the new interest set...
         self.handle_send_set_zone(self._owner_id, self._zone_id, self._old_zone_id)
@@ -340,9 +344,9 @@ class StateObject(object):
         elif field.is_ram():
             self._other_fields[field.get_number()] = field_args
 
-    def handle_send_changing_location(self, channel):
+    def handle_send_changing_location(self):
         datagram = io.NetworkDatagram()
-        datagram.add_header(channel, self._do_id,
+        datagram.add_header(self._parent_id, self._do_id,
             types.STATESERVER_OBJECT_CHANGING_LOCATION)
 
         datagram.add_uint32(self._do_id)
