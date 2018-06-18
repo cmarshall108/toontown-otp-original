@@ -478,13 +478,14 @@ class StateObject(object):
         datagram.add_uint64(self._do_id)
         self._network.handle_send_connection_datagram(datagram)
 
-    def handle_send_delete_broadcast(self, excludes=[]):
+    def handle_send_delete_broadcast(self, cleanup=False, excludes=[]):
         for state_object in self._network.object_manager.state_objects.values():
 
             if state_object.do_id in excludes:
                 continue
 
-            if state_object.parent_id == self._old_parent_id or state_object.zone_id == self._old_zone_id:
+            if (state_object.parent_id == self._old_parent_id or state_object.zone_id == self._old_zone_id) or (cleanup and \
+                state_object.parent_id == self._parent_id and state_object.zone_id == self._zone_id):
 
                 if not state_object.owner_id:
                     continue
@@ -504,7 +505,7 @@ class StateObject(object):
                 state_object.handle_send_delete(self._owner_id)
 
     def destroy(self):
-        self.handle_send_delete_broadcast()
+        self.handle_send_delete_broadcast(cleanup=True, excludes=[self._do_id])
 
 class StateObjectManager(object):
     notify = directNotify.newCategory('StateObjectManager')
