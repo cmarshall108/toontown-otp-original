@@ -695,7 +695,7 @@ class Client(io.NetworkHandler):
         if message_type == types.STATESERVER_GET_SHARD_ALL_RESP:
             self.handle_get_shard_list_resp(di)
         elif message_type == types.STATESERVER_OBJECT_SET_AI_RESP:
-            self.handle_object_set_ai_resp(di)
+            self.handle_object_set_shard_resp(di)
         elif message_type == types.STATESERVER_SET_AVATAR_RESP:
             self.handle_avatar_details_resp(di)
         elif message_type == types.STATESERVER_OBJECT_SET_ZONE_RESP:
@@ -915,7 +915,7 @@ class Client(io.NetworkHandler):
         datagram.add_uint64(shard_id)
         self.network.handle_send_connection_datagram(datagram)
 
-    def handle_object_set_ai_resp(self, di):
+    def handle_object_set_shard_resp(self, di):
         datagram = io.NetworkDatagram()
         datagram.add_uint16(types.CLIENT_GET_STATE_RESP)
         self.handle_send_datagram(datagram)
