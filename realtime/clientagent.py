@@ -667,7 +667,7 @@ class Client(io.NetworkHandler):
         elif message_type == types.CLIENT_GET_AVATARS:
             self.handle_get_avatars()
         elif message_type == types.CLIENT_GET_AVATAR_DETAILS:
-            self.handle_get_avatar_details()
+            self.handle_get_avatar_details(di)
         elif message_type == types.CLIENT_CREATE_AVATAR:
             self.handle_create_avatar(di)
         elif message_type == types.CLIENT_SET_AVATAR:
