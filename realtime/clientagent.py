@@ -1042,7 +1042,7 @@ class Client(io.NetworkHandler):
             self.network.account_manager.stop_operation(self)
 
         if self.allocated_channel:
-            self.network.channel_allocator.free(self._allocated_channel)
+            self.network.channel_allocator.free(self.allocated_channel)
 
         io.NetworkHandler.shutdown(self)
 
