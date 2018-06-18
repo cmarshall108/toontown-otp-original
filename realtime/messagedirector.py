@@ -89,7 +89,7 @@ class ParticipantInterface(object):
 
     def add_channel(self, participant, channel):
         if self.has_channel(channel):
-            self.notify.warning('Cannot add channel: %d, already exists!' % (
+            self.notify.debug('Cannot add channel: %d, already exists!' % (
                 channel))
 
             return
@@ -103,7 +103,7 @@ class ParticipantInterface(object):
         participant = self.get_participant(channel)
 
         if not participant:
-            self.notify.warning('Cannot remove channel: %d, does not exist!' % (
+            self.notify.debug('Cannot remove channel: %d, does not exist!' % (
                 channel))
 
             return
