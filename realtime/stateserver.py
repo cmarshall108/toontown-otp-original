@@ -697,6 +697,6 @@ class StateServer(io.NetworkConnector):
             self.notify.warning('Failed to delete object: %d, object does not exist!' % (
                 do_id))
 
-            return do_id
+            return
 
         self._object_manager.remove_state_object(state_object)
